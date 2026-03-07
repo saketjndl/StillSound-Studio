@@ -1,0 +1,51 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "StillSound",
+  "version": "1.0.0",
+  "identifier": "com.stillsound.studio",
+  "build": {
+    "frontendDist": "../src"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "label": "main",
+        "title": "StillSound",
+        "width": 380,
+        "height": 600,
+        "resizable": false,
+        "decorations": false,
+        "transparent": true,
+        "center": true
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": [
+      "nsis",
+      "msi"
+    ],
+    "icon": [
+      "icons/32x32.png",
+      "icons/64x64.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.ico",
+      "icons/icon.png"
+    ],
+    "windows": {
+      "nsis": {
+        "installMode": "both",
+        "displayLanguageSelector": false,
+        "startMenuFolder": "StillSound",
+        "installerIcon": "icons/icon.ico",
+        "installerHooks": "installer-hooks.nsh"
+      }
+    }
+  }
+}

@@ -1,0 +1,35 @@
+{
+    "manifest_version": 3,
+    "name": "StillSound Sync",
+    "version": "1.0.0",
+    "description": "Native Audio Sync for YouTube",
+    "permissions": [
+        "tabs",
+        "activeTab"
+    ],
+    "host_permissions": [
+        "*://*.youtube.com/*"
+    ],
+    "background": {
+        "service_worker": "background.js"
+    },
+    "content_scripts": [
+        {
+            "matches": [
+                "*://*.youtube.com/*"
+            ],
+            "js": [
+                "content.js"
+            ]
+        }
+    ],
+    "action": {
+        "default_popup": "popup.html",
+        "default_icon": {
+            "128": "icons/icon128.png"
+        }
+    },
+    "icons": {
+        "128": "icons/icon128.png"
+    }
+}
