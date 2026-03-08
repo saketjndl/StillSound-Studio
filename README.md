@@ -43,9 +43,10 @@ StillSound automatically pauses your Spotify when you play a YouTube video and r
 
 ### Browser Extension (Chrome)
 
-1. Open Chrome → `chrome://extensions/`
-2. Enable **Developer Mode** (toggle in the top right).
-3. Click **Load Unpacked** → select the `browser-extension` folder.
+1. Download or clone this repository to get the `browser-extension` folder.
+2. Open Chrome → `chrome://extensions/`
+3. Enable **Developer Mode** (toggle in the top right).
+4. Click **Load Unpacked** → select the `browser-extension` folder.
 
 ---
 
@@ -97,9 +98,11 @@ The installer is output to `src-tauri/target/release/bundle/nsis/`.
 
 ---
 
-## Contributing
+## Credits
 
-If StillSound helps your study sessions, consider [starring the repo](https://github.com/saketjndl/StillSound-Studio) ⭐
+Built by **saketjndl (.sodiumcyanide)**. 
+
+If StillSound helps your study sessions, consider [starring the repo](https://github.com/saketjndl/StillSound-Studio) &#9733;
 
 ---
 
