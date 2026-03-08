@@ -420,6 +420,28 @@ fn open_url(url: String) -> Result<(), String> {
     open::that(url).map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+async fn get_spotify_volume(state: tauri::State<'_, StateWrapper>) -> Result<u32, String> {
+    let token = {
+        let s = state.0.lock().unwrap();
+        s.access_token.clone()
+    };
+
+    if let Some(token) = token {
+        if let Some(playback) = spotify_get_playback_state(&token).await {
+            if let Some(vol) = playback["device"]["volume_percent"].as_u64() {
+                let mut s = state.0.lock().unwrap();
+                s.volume = vol as u32;
+                s.save();
+                return Ok(vol as u32);
+            }
+        }
+    }
+    // Return saved volume as fallback
+    let s = state.0.lock().unwrap();
+    Ok(s.volume)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let initial_state = AppState::load();
@@ -453,6 +475,7 @@ pub fn run() {
             close_window,
             minimize_window,
             get_initial_state,
+            get_spotify_volume,
             open_url
         ])
         .run(tauri::generate_context!())

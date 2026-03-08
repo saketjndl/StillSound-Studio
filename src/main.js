@@ -28,6 +28,12 @@ function goDash() {
     tbDot.classList.add('ok');
     pSpotify.classList.add('on');
     pSpotify.textContent = 'connected';
+
+    // Sync volume slider with Spotify's actual volume
+    invoke('get_spotify_volume').then((vol) => {
+        volSlider.value = vol;
+        volNum.textContent = vol + '%';
+    }).catch(() => { });
 }
 
 function openGithub() {
@@ -67,6 +73,11 @@ document.getElementById('star-dash').addEventListener('click', (e) => {
 
 // --- extension download link ---
 document.getElementById('open-ext-download').addEventListener('click', () => {
+    invoke('open_url', { url: GITHUB }).catch(() => {
+        window.__TAURI__?.shell?.open(GITHUB);
+    });
+});
+document.getElementById('open-ext-dash').addEventListener('click', () => {
     invoke('open_url', { url: GITHUB }).catch(() => {
         window.__TAURI__?.shell?.open(GITHUB);
     });
@@ -182,6 +193,9 @@ listen('auth_success', () => {
 listen('bridge_linked', () => {
     pExt.classList.add('on');
     pExt.textContent = 'linked';
+    // Hide extension setup help once connected
+    const extHelp = document.getElementById('ext-help');
+    if (extHelp) extHelp.style.display = 'none';
 });
 
 listen('sync_event', (ev) => {
