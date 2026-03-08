@@ -108,4 +108,4 @@ If StillSound helps your study sessions, consider [starring the repo](https://gi
 
 ## License
 
-MIT
+[MIT](LICENSE)
