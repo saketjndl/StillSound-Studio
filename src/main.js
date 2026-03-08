@@ -65,6 +65,13 @@ document.getElementById('star-dash').addEventListener('click', (e) => {
     openGithub();
 });
 
+// --- extension download link ---
+document.getElementById('open-ext-download').addEventListener('click', () => {
+    invoke('open_url', { url: GITHUB }).catch(() => {
+        window.__TAURI__?.shell?.open(GITHUB);
+    });
+});
+
 // --- connect ---
 document.getElementById('btn-connect').addEventListener('click', async () => {
     const id = clientId.value.trim();

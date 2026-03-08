@@ -1,20 +1,37 @@
-// StillSound Content Script
-let videoElement = null;
+// StillSound Content Script — YouTube video sync
+let currentVideo = null;
 
-function findVideo() {
-    videoElement = document.querySelector('video');
-    if (videoElement) {
-        console.log('[STILLSOUND] Video Detector Active');
+function attachToVideo(video) {
+    if (video === currentVideo) return;
+    currentVideo = video;
 
-        videoElement.onplay = () => chrome.runtime.sendMessage({ type: 'video_playing' });
-        videoElement.onpause = () => chrome.runtime.sendMessage({ type: 'video_paused' });
+    video.addEventListener('play', () => {
+        chrome.runtime.sendMessage({ type: 'video_playing' });
+    });
+
+    video.addEventListener('pause', () => {
+        chrome.runtime.sendMessage({ type: 'video_paused' });
+    });
+
+    // Send current state immediately
+    if (!video.paused) {
+        chrome.runtime.sendMessage({ type: 'video_playing' });
     }
 }
 
-// Watch for video element
-const observer = new MutationObserver(() => {
-    if (!videoElement) findVideo();
-});
+function findAndAttach() {
+    const video = document.querySelector('video');
+    if (video && video !== currentVideo) {
+        attachToVideo(video);
+    }
+}
 
+// YouTube is a SPA — the video element can change on navigation.
+// Use MutationObserver + periodic check to always stay attached.
+const observer = new MutationObserver(findAndAttach);
 observer.observe(document.body, { childList: true, subtree: true });
-findVideo();
+
+// Periodic fallback for SPA navigations that don't trigger mutations
+setInterval(findAndAttach, 2000);
+
+findAndAttach();

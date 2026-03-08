@@ -175,7 +175,7 @@ async fn spotify_set_volume(access_token: &str, volume: u32, device_id: Option<S
     let vol = volume.min(100);
     let mut url = format!("https://api.spotify.com/v1/me/player/volume?volume_percent={}", vol);
     if let Some(ref id) = device_id {
-        url = format!("{}?device_id={}", url, id);
+        url = format!("{}&device_id={}", url, id);
     }
     let res = client.put(&url)
         .bearer_auth(access_token)
