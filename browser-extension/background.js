@@ -7,7 +7,17 @@ let ytPlaying = false;
 let ytDetected = false;
 
 function connect() {
-    socket = new WebSocket(SERVER_URL);
+    if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) {
+        return; // Already connected or connecting
+    }
+
+    try {
+        socket = new WebSocket(SERVER_URL);
+    } catch (e) {
+        isConnected = false;
+        setTimeout(connect, reconnectInterval);
+        return;
+    }
 
     socket.onopen = () => {
         console.log('[StillSound] Connected to app');
@@ -16,25 +26,38 @@ function connect() {
     };
 
     socket.onclose = () => {
+        console.log('[StillSound] Disconnected, reconnecting...');
         isConnected = false;
+        socket = null;
         setTimeout(connect, reconnectInterval);
-        if (reconnectInterval < 30000) reconnectInterval += 5000;
+        if (reconnectInterval < 15000) reconnectInterval += 2000;
     };
 
     socket.onerror = () => {
-        // Server not available — will reconnect via onclose
+        isConnected = false;
     };
 }
 
-// Forward content script messages to the native app
+// Keep service worker alive — Manifest V3 service workers sleep after 30s of inactivity.
+// This alarm fires every 25 seconds to prevent that, keeping the WebSocket alive.
+chrome.alarms.create('keepalive', { periodInMinutes: 0.4 });
+chrome.alarms.onAlarm.addListener((alarm) => {
+    if (alarm.name === 'keepalive') {
+        if (!socket || socket.readyState !== WebSocket.OPEN) {
+            connect();
+        }
+    }
+});
+
+// Handle messages from content script AND popup
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    // Handle status request from popup
+    // Popup asking for status
     if (message.type === 'get_status') {
         sendResponse({ connected: isConnected, ytPlaying, ytDetected });
-        return true;
+        return; // Synchronous response, no need for return true
     }
 
-    // Track YouTube state
+    // Track YouTube state from content script
     if (message.type === 'video_playing') {
         ytPlaying = true;
         ytDetected = true;
@@ -43,7 +66,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         ytDetected = true;
     }
 
-    // Forward to native app
+    // Forward to native app via WebSocket
     if (socket && socket.readyState === WebSocket.OPEN) {
         socket.send(JSON.stringify(message));
     }

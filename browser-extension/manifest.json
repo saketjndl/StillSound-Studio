@@ -2,10 +2,11 @@
     "manifest_version": 3,
     "name": "StillSound Sync",
     "version": "1.0.0",
-    "description": "Native Audio Sync for YouTube",
+    "description": "Auto-sync Spotify with YouTube",
     "permissions": [
         "tabs",
-        "activeTab"
+        "activeTab",
+        "alarms"
     ],
     "host_permissions": [
         "*://*.youtube.com/*"
@@ -20,7 +21,8 @@
             ],
             "js": [
                 "content.js"
-            ]
+            ],
+            "run_at": "document_idle"
         }
     ],
     "action": {
