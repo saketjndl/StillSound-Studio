@@ -1,4 +1,4 @@
-// StillSound Content Script — YouTube video detection
+const api = (typeof browser !== 'undefined') ? browser : chrome;
 let currentVideo = null;
 
 function attachVideo() {
@@ -10,18 +10,17 @@ function attachVideo() {
 
     video.addEventListener('play', () => {
         console.log('[StillSound] Video playing');
-        chrome.runtime.sendMessage({ type: 'video_playing' });
+        api.runtime.sendMessage({ type: 'video_playing' });
     });
 
     video.addEventListener('pause', () => {
         console.log('[StillSound] Video paused');
-        chrome.runtime.sendMessage({ type: 'video_paused' });
+        api.runtime.sendMessage({ type: 'video_paused' });
     });
 
     // Report current state immediately if video is already there
-    // We only send if it's NOT paused. If it's paused, we wait for 'play'.
     if (!video.paused) {
-        chrome.runtime.sendMessage({ type: 'video_playing' });
+        api.runtime.sendMessage({ type: 'video_playing' });
     }
 }
 

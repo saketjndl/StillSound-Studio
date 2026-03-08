@@ -16,16 +16,17 @@ use std::path::PathBuf;
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct AppState {
+    pub client_id: Option<String>,
+    pub code_verifier: Option<String>,
+    pub access_token: Option<String>,
+    pub refresh_token: Option<String>,
+    pub app_paused_spotify: bool,
+    pub manual_pause_detected: bool,
     pub sync_enabled: bool,
     pub volume: u32,
     pub spotify_ready: bool,
     pub yt_playing: bool,
     pub current_device_id: Option<String>,
-    pub access_token: Option<String>,
-    pub client_id: Option<String>,
-    pub code_verifier: Option<String>,
-    pub app_paused_spotify: bool,
-    pub manual_pause_detected: bool,
 }
 
 impl Default for AppState {
@@ -36,9 +37,10 @@ impl Default for AppState {
             spotify_ready: false,
             yt_playing: false,
             current_device_id: None,
-            access_token: None,
             client_id: None,
             code_verifier: None,
+            access_token: None,
+            refresh_token: None,
             app_paused_spotify: false,
             manual_pause_detected: false,
         }
@@ -81,118 +83,8 @@ impl AppState {
 
 // --- Spotify Controller ---
 
-async fn spotify_get_active_device(access_token: &str) -> Option<String> {
-    let client = Client::new();
-    let res = client.get("https://api.spotify.com/v1/me/player/devices")
-        .bearer_auth(access_token)
-        .send()
-        .await
-        .ok()?;
+// (Deleted old duplicate functions)
 
-    let data: serde_json::Value = res.json().await.ok()?;
-    let devices = data["devices"].as_array()?;
-    
-    // Find first active device or just the first one
-    devices.iter().find(|d| d["is_active"].as_bool().unwrap_or(false))
-        .or(devices.get(0))
-        .and_then(|d| d["id"].as_str().map(|s| s.to_string()))
-}
-
-async fn spotify_get_playback_state(access_token: &str) -> Option<serde_json::Value> {
-    let client = Client::new();
-    let res = client.get("https://api.spotify.com/v1/me/player")
-        .bearer_auth(access_token)
-        .send()
-        .await
-        .ok()?;
-    
-    if res.status() == 200 {
-        res.json().await.ok()
-    } else {
-        None
-    }
-}
-
-async fn spotify_control(access_token: &str, play: bool, device_id: Option<String>) -> Result<(), String> {
-    let client = Client::new();
-    
-    // 1. SMART CHECK: Avoid redundant play/pause (Fixes many 403s)
-    if let Some(state) = spotify_get_playback_state(access_token).await {
-        let is_currently_playing = state["is_playing"].as_bool().unwrap_or(false);
-        if play == is_currently_playing {
-            return Ok(()); // Already in desired state
-        }
-    }
-
-    let mut url = if play {
-        "https://api.spotify.com/v1/me/player/play".to_string()
-    } else {
-        "https://api.spotify.com/v1/me/player/pause".to_string()
-    };
-
-    if let Some(ref id) = device_id {
-        url = format!("{}?device_id={}", url, id);
-    }
-
-    let res = client.put(&url)
-        .bearer_auth(access_token)
-        .header("Content-Length", "0")
-        .send()
-        .await
-        .map_err(|e| e.to_string())?;
-
-    let status = res.status();
-    if status.is_success() || status == reqwest::StatusCode::NO_CONTENT {
-        Ok(())
-    } else {
-        let err_body = res.text().await.unwrap_or_default();
-        
-        // 2. FALLBACK: If "Restriction Violated" on Play, it usually means the session is "stale".
-        // A "Transfer Playback" command can often wake it up.
-        if play && status == 403 && err_body.contains("Restriction") {
-            if let Some(ref id) = device_id {
-                println!("[SPOTIFY] Session stale. Attempting to force wake device: {}", id);
-                let mut body = HashMap::new();
-                body.insert("device_ids", vec![id]);
-                let _ = client.put("https://api.spotify.com/v1/me/player")
-                    .bearer_auth(access_token)
-                    .json(&body)
-                    .send()
-                    .await;
-                
-                // Try playing again after transfer
-                let _ = client.put(&url)
-                    .bearer_auth(access_token)
-                    .header("Content-Length", "0")
-                    .send()
-                    .await;
-            }
-        }
-
-        println!("[SPOTIFY ERROR] Status: {} Body: {}", status, err_body);
-        Err(err_body)
-    }
-}
-
-async fn spotify_set_volume(access_token: &str, volume: u32, device_id: Option<String>) -> Result<(), String> {
-    let client = Client::new();
-    let vol = volume.min(100);
-    let mut url = format!("https://api.spotify.com/v1/me/player/volume?volume_percent={}", vol);
-    if let Some(ref id) = device_id {
-        url = format!("{}&device_id={}", url, id);
-    }
-    let res = client.put(&url)
-        .bearer_auth(access_token)
-        .header("Content-Length", "0")
-        .send()
-        .await
-        .map_err(|e| e.to_string())?;
-    if res.status().is_success() || res.status() == reqwest::StatusCode::NO_CONTENT {
-        Ok(())
-    } else {
-        Err(format!("Volume error: {}", res.status()))
-    }
-}
 
 // --- WebSocket Sync Engine (Extension Bridge) ---
 
@@ -227,72 +119,68 @@ async fn start_extension_bridge<R: Runtime>(app: AppHandle<R>, state: Arc<Mutex<
 }
 
 async fn handle_extension_event<R: Runtime>(event: &str, app: &AppHandle<R>, state: &Arc<Mutex<AppState>>) {
-    let (token, yt_playing, mut device_id, sync_enabled) = {
+    let (yt_playing, mut device_id, sync_enabled) = {
         let mut s = state.lock().unwrap();
         match event {
             "video_playing" => s.yt_playing = true,
             "video_paused" => s.yt_playing = false,
             _ => {}
         }
-        (s.access_token.clone(), s.yt_playing, s.current_device_id.clone(), s.sync_enabled)
+        (s.yt_playing, s.current_device_id.clone(), s.sync_enabled)
     };
 
     app.emit("sync_event", if yt_playing { "yt_playing" } else { "yt_paused" }).unwrap();
 
     if !sync_enabled { return; }
 
-    if let Some(token) = token {
-        // Ensure we have a device ID
-        if device_id.is_none() {
-            if let Some(found) = spotify_get_active_device(&token).await {
-                device_id = Some(found.clone());
-                let mut s = state.lock().unwrap();
-                s.current_device_id = Some(found);
-                s.save();
-            }
+    // Use state-aware device discovery
+    if device_id.is_none() {
+        if let Some(found) = spotify_get_active_device(state).await {
+            device_id = Some(found.clone());
+            let mut s = state.lock().unwrap();
+            s.current_device_id = Some(found);
+            s.save();
         }
+    }
 
-        if yt_playing {
-            // Case 1 & 8: YouTube just started playing (or continues playing)
-            // We want to pause Spotify ONLY if it is currently playing.
-            if let Some(playback) = spotify_get_playback_state(&token).await {
-                let spotify_is_playing = playback["is_playing"].as_bool().unwrap_or(false);
-                
-                if spotify_is_playing {
-                    // PAUSE SPOTIFY
-                    let _ = spotify_control(&token, false, device_id).await;
+    if yt_playing {
+        // Use state-aware playback check
+        if let Some(playback) = spotify_get_playback_state(state).await {
+            let spotify_is_playing = playback["is_playing"].as_bool().unwrap_or(false);
+            
+            if spotify_is_playing {
+                // Use state-aware control
+                if let Ok(_) = spotify_control(state, false, device_id).await {
                     let mut s = state.lock().unwrap();
                     s.app_paused_spotify = true;
                     s.manual_pause_detected = false;
                     println!("[STILLSOUND] Paused Spotify because YouTube started");
-                } else {
-                    // Spotify was already paused. 
-                    // Case 3: If user manually paused it before YouTube started, we shouldn't resume later.
-                    let mut s = state.lock().unwrap();
-                    if !s.app_paused_spotify {
-                        s.manual_pause_detected = true;
-                        println!("[STILLSOUND] Respecting manual Spotify pause");
-                    }
+                }
+            } else {
+                let mut s = state.lock().unwrap();
+                if !s.app_paused_spotify {
+                    s.manual_pause_detected = true;
+                    println!("[STILLSOUND] Respecting manual Spotify pause");
                 }
             }
-        } else {
-            // Case 1, 2, 5, 6, 7, 10: All YouTube videos stopped (or debounced transition)
-            // RESUME SPOTIFY only if we were the ones who paused it.
-            let should_resume = {
-                let s = state.lock().unwrap();
-                s.app_paused_spotify && !s.manual_pause_detected
-            };
+        }
+    } else {
+        let (was_paused_by_app, manual_override) = {
+            let s = state.lock().unwrap();
+            (s.app_paused_spotify, s.manual_pause_detected)
+        };
 
-            if should_resume {
-                let _ = spotify_control(&token, true, device_id).await;
+        if was_paused_by_app && !manual_override {
+            // Use state-aware control
+            if let Ok(_) = spotify_control(state, true, device_id).await {
                 let mut s = state.lock().unwrap();
                 s.app_paused_spotify = false;
                 println!("[STILLSOUND] Resumed Spotify (auto)");
-            } else {
-                let mut s = state.lock().unwrap();
-                s.app_paused_spotify = false;
-                println!("[STILLSOUND] Staying paused (user intent)");
             }
+        } else {
+            let mut s = state.lock().unwrap();
+            s.app_paused_spotify = false;
+            println!("[STILLSOUND] Staying paused (user intent)");
         }
     }
 }
@@ -351,27 +239,215 @@ async fn handle_spotify_code<R: Runtime>(code: String, app: AppHandle<R>, state:
             if let Ok(data) = res.json::<serde_json::Value>().await {
                 if let Some(token) = data["access_token"].as_str() {
                     let token = token.to_string();
+                    let refresh = data["refresh_token"].as_str().map(|s| s.to_string());
+                    
                     {
                         let mut s = state.lock().unwrap();
                         s.access_token = Some(token.clone());
+                        if refresh.is_some() {
+                            s.refresh_token = refresh;
+                        }
                         s.spotify_ready = true;
                         s.save();
                     }
                     
-                    let device = spotify_get_active_device(&token).await;
+                    let device = spotify_get_active_device_internal(&token).await;
                     if let Some(device) = device {
                         let mut s = state.lock().unwrap();
                         s.current_device_id = Some(device);
                         s.save();
                     }
                     
-                    println!("[AUTH] Successfully exchanged PKCE code for token!");
+                    println!("[AUTH] Successfully exchanged PKCE code for tokens!");
                     app.emit("auth_success", ()).unwrap();
                     return;
                 }
             }
         }
     }
+}
+
+async fn spotify_refresh_token(state: &Arc<Mutex<AppState>>) -> Result<String, String> {
+    let (client_id, refresh_token) = {
+        let s = state.lock().unwrap();
+        (s.client_id.clone(), s.refresh_token.clone())
+    };
+
+    if let (Some(cid), Some(rt)) = (client_id, refresh_token) {
+        let client = Client::new();
+        let mut params = HashMap::new();
+        params.insert("grant_type", "refresh_token");
+        params.insert("refresh_token", &rt);
+        params.insert("client_id", &cid);
+
+        let res = client.post("https://accounts.spotify.com/api/token")
+            .form(&params)
+            .send()
+            .await
+            .map_err(|e| e.to_string())?;
+
+        if res.status().is_success() {
+            let data: serde_json::Value = res.json().await.map_err(|e| e.to_string())?;
+            if let Some(new_at) = data["access_token"].as_str() {
+                let new_at = new_at.to_string();
+                let new_rt = data["refresh_token"].as_str().map(|s| s.to_string());
+                
+                let mut s = state.lock().unwrap();
+                s.access_token = Some(new_at.clone());
+                if new_rt.is_some() {
+                    s.refresh_token = new_rt;
+                }
+                s.save();
+                println!("[AUTH] Token refreshed successfully!");
+                return Ok(new_at);
+            }
+        }
+    }
+    Err("Failed to refresh token".into())
+}
+
+async fn spotify_get_active_device_internal(access_token: &str) -> Option<String> {
+    let client = Client::new();
+    let res = client.get("https://api.spotify.com/v1/me/player/devices")
+        .bearer_auth(access_token)
+        .send()
+        .await
+        .ok()?;
+
+    let data: serde_json::Value = res.json().await.ok()?;
+    let devices = data["devices"].as_array()?;
+    
+    // Find first active device or just the first one
+    devices.iter().find(|d| d["is_active"].as_bool().unwrap_or(false))
+        .or(devices.get(0))
+        .and_then(|d| d["id"].as_str().map(|s| s.to_string()))
+}
+
+async fn spotify_get_active_device(state: &Arc<Mutex<AppState>>) -> Option<String> {
+    let token = state.lock().unwrap().access_token.clone()?;
+    
+    if let Some(device) = spotify_get_active_device_internal(&token).await {
+        return Some(device);
+    }
+
+    // Try refresh
+    if let Ok(new_at) = spotify_refresh_token(state).await {
+        return spotify_get_active_device_internal(&new_at).await;
+    }
+    
+    None
+}
+
+async fn spotify_get_playback_state_internal(access_token: &str) -> Option<serde_json::Value> {
+    let client = Client::new();
+    let res = client.get("https://api.spotify.com/v1/me/player")
+        .bearer_auth(access_token)
+        .send()
+        .await
+        .ok()?;
+    
+    if res.status() == 200 {
+        res.json().await.ok()
+    } else {
+        None
+    }
+}
+
+async fn spotify_get_playback_state(state: &Arc<Mutex<AppState>>) -> Option<serde_json::Value> {
+    let token = state.lock().unwrap().access_token.clone()?;
+    
+    let res = spotify_get_playback_state_internal(&token).await;
+    if res.is_some() {
+        return res;
+    }
+
+    // Try refresh on failure (might be a 401)
+    if let Ok(new_at) = spotify_refresh_token(state).await {
+        return spotify_get_playback_state_internal(&new_at).await;
+    }
+
+    None
+}
+
+async fn spotify_control_internal(access_token: &str, play: bool, device_id: Option<String>) -> Result<reqwest::Response, String> {
+    let client = Client::new();
+    let mut url = if play {
+        "https://api.spotify.com/v1/me/player/play".to_string()
+    } else {
+        "https://api.spotify.com/v1/me/player/pause".to_string()
+    };
+
+    if let Some(ref id) = device_id {
+        url = format!("{}?device_id={}", url, id);
+    }
+
+    client.put(&url)
+        .bearer_auth(access_token)
+        .header("Content-Length", "0")
+        .send()
+        .await
+        .map_err(|e| e.to_string())
+}
+
+async fn spotify_control(state: &Arc<Mutex<AppState>>, play: bool, device_id: Option<String>) -> Result<(), String> {
+    let token = state.lock().unwrap().access_token.clone().ok_or("No token")?;
+    
+    // 1. SMART CHECK
+    if let Some(playback) = spotify_get_playback_state_internal(&token).await {
+        let is_currently_playing = playback["is_playing"].as_bool().unwrap_or(false);
+        if play == is_currently_playing {
+            return Ok(());
+        }
+    }
+
+    let res = spotify_control_internal(&token, play, device_id.clone()).await?;
+    
+    if res.status() == reqwest::StatusCode::UNAUTHORIZED {
+        if let Ok(new_at) = spotify_refresh_token(state).await {
+            let res = spotify_control_internal(&new_at, play, device_id).await?;
+            if res.status().is_success() {
+                return Ok(());
+            }
+        }
+    } else if res.status().is_success() {
+        return Ok(());
+    }
+
+    Err(format!("Control failed with status: {}", res.status()))
+}
+
+async fn spotify_set_volume_internal(access_token: &str, volume: u32, device_id: Option<String>) -> Result<reqwest::Response, String> {
+    let client = Client::new();
+    let vol = volume.min(100);
+    let mut url = format!("https://api.spotify.com/v1/me/player/volume?volume_percent={}", vol);
+    if let Some(ref id) = device_id {
+        url = format!("{}&device_id={}", url, id);
+    }
+    client.put(&url)
+        .bearer_auth(access_token)
+        .header("Content-Length", "0")
+        .send()
+        .await
+        .map_err(|e| e.to_string())
+}
+
+async fn spotify_set_volume(state: &Arc<Mutex<AppState>>, volume: u32, device_id: Option<String>) -> Result<(), String> {
+    let token = state.lock().unwrap().access_token.clone().ok_or("No token")?;
+    
+    let res = spotify_set_volume_internal(&token, volume, device_id.clone()).await?;
+    
+    if res.status() == reqwest::StatusCode::UNAUTHORIZED {
+        if let Ok(new_at) = spotify_refresh_token(state).await {
+            let res = spotify_set_volume_internal(&new_at, volume, device_id).await?;
+            if res.status().is_success() {
+                return Ok(());
+            }
+        }
+    } else if res.status().is_success() {
+        return Ok(());
+    }
+
+    Err(format!("Volume failed with status: {}", res.status()))
 }
 
 // --- Tauri Commands ---
@@ -387,17 +463,14 @@ fn update_settings(state: tauri::State<StateWrapper>, sync: bool, vol: u32) -> R
 
 #[tauri::command]
 async fn set_volume(state: tauri::State<'_, StateWrapper>, vol: u32) -> Result<(), String> {
-    let (token, device_id) = {
+    let device_id = {
         let mut s = state.0.lock().unwrap();
         s.volume = vol;
         s.save();
-        (s.access_token.clone(), s.current_device_id.clone())
+        s.current_device_id.clone()
     };
 
-    if let Some(token) = token {
-        spotify_set_volume(&token, vol, device_id).await?;
-    }
-    Ok(())
+    spotify_set_volume(&state.0, vol, device_id).await
 }
 
 #[tauri::command]
@@ -428,20 +501,13 @@ async fn start_auth(state: tauri::State<'_, StateWrapper>, client_id: String) ->
 
 #[tauri::command]
 async fn refresh_spotify_device(state: tauri::State<'_, StateWrapper>) -> Result<(), String> {
-    let token = {
-        let s = state.0.lock().unwrap();
-        s.access_token.clone()
-    };
-
-    if let Some(t) = token {
-        if let Some(device) = spotify_get_active_device(&t).await {
-            let mut s = state.0.lock().unwrap();
-            s.current_device_id = Some(device);
-            s.save();
-            return Ok(());
-        }
+    if let Some(device) = spotify_get_active_device(&state.0).await {
+        let mut s = state.0.lock().unwrap();
+        s.current_device_id = Some(device);
+        s.save();
+        return Ok(());
     }
-    Err("No active device found on Spotify.".into())
+    Err("No active device found on Spotify. Please open Spotify on one of your devices.".into())
 }
 
 #[tauri::command]
@@ -466,19 +532,12 @@ fn open_url(url: String) -> Result<(), String> {
 
 #[tauri::command]
 async fn get_spotify_volume(state: tauri::State<'_, StateWrapper>) -> Result<u32, String> {
-    let token = {
-        let s = state.0.lock().unwrap();
-        s.access_token.clone()
-    };
-
-    if let Some(token) = token {
-        if let Some(playback) = spotify_get_playback_state(&token).await {
-            if let Some(vol) = playback["device"]["volume_percent"].as_u64() {
-                let mut s = state.0.lock().unwrap();
-                s.volume = vol as u32;
-                s.save();
-                return Ok(vol as u32);
-            }
+    if let Some(playback) = spotify_get_playback_state(&state.0).await {
+        if let Some(vol) = playback["device"]["volume_percent"].as_u64() {
+            let mut s = state.0.lock().unwrap();
+            s.volume = vol as u32;
+            s.save();
+            return Ok(vol as u32);
         }
     }
     // Return saved volume as fallback
@@ -507,6 +566,20 @@ pub fn run() {
             let state_cb = state.clone();
             tauri::async_runtime::spawn(async move {
                 start_callback_server(handle_cb, state_cb).await;
+            });
+
+            // Re-validate session on startup
+            let state_init = state.clone();
+            tauri::async_runtime::spawn(async move {
+                let has_token = state_init.lock().unwrap().access_token.is_some();
+                if has_token {
+                    println!("[INIT] Verifying Spotify session...");
+                    if spotify_get_active_device(&state_init).await.is_some() {
+                        println!("[INIT] Session valid!");
+                    } else {
+                        println!("[INIT] Session invalid or no device found.");
+                    }
+                }
             });
 
             Ok(())

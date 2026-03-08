@@ -1,4 +1,5 @@
 // StillSound Background Bridge
+const api = (typeof browser !== 'undefined') ? browser : chrome;
 const SERVER_URL = 'ws://127.0.0.1:9876';
 let socket = null;
 let reconnectInterval = 3000;
@@ -71,8 +72,8 @@ function sendToApp(type) {
 }
 
 // Keep service worker alive
-chrome.alarms.create('keepalive', { periodInMinutes: 0.4 });
-chrome.alarms.onAlarm.addListener((alarm) => {
+api.alarms.create('keepalive', { periodInMinutes: 0.4 });
+api.alarms.onAlarm.addListener((alarm) => {
     if (alarm.name === 'keepalive') {
         if (!socket || socket.readyState !== WebSocket.OPEN) {
             connect();
@@ -81,7 +82,7 @@ chrome.alarms.onAlarm.addListener((alarm) => {
 });
 
 // Clean up when a tab is closed
-chrome.tabs.onRemoved.addListener((tabId) => {
+api.tabs.onRemoved.addListener((tabId) => {
     if (tabStates.has(tabId)) {
         tabStates.delete(tabId);
         updateAggregateState();
@@ -89,7 +90,7 @@ chrome.tabs.onRemoved.addListener((tabId) => {
 });
 
 // Handle messages from content script AND popup
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+api.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.type === 'get_status') {
         sendResponse({
             connected: isConnected,

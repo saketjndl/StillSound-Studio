@@ -1,3 +1,4 @@
+const api = (typeof browser !== 'undefined') ? browser : chrome;
 const dot = document.getElementById('dot');
 const appPill = document.getElementById('app-pill');
 const ytPill = document.getElementById('yt-pill');
@@ -28,12 +29,11 @@ function updateUI(res) {
 }
 
 function getStatus() {
-    chrome.runtime.sendMessage({ type: 'get_status' }, (res) => {
-        if (chrome.runtime.lastError) return;
+    api.runtime.sendMessage({ type: 'get_status' }, (res) => {
+        if (api.runtime.lastError) return;
         updateUI(res);
     });
 }
 
-// Check immediately, then retry after a beat (service worker might still be waking up)
 getStatus();
 setTimeout(getStatus, 800);
