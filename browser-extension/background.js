@@ -3,12 +3,15 @@ const SERVER_URL = 'ws://127.0.0.1:9876';
 let socket = null;
 let reconnectInterval = 3000;
 let isConnected = false;
-let ytPlaying = false;
-let ytDetected = false;
+
+// Aggregation state
+const tabStates = new Map(); // tabId -> isPlaying
+let aggregatePlaying = false;
+let debounceTimer = null;
 
 function connect() {
     if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) {
-        return; // Already connected or connecting
+        return;
     }
 
     try {
@@ -23,6 +26,8 @@ function connect() {
         console.log('[StillSound] Connected to app');
         isConnected = true;
         reconnectInterval = 3000;
+        // Sync current state on connect
+        sendToApp(aggregatePlaying ? 'video_playing' : 'video_paused');
     };
 
     socket.onclose = () => {
@@ -38,8 +43,34 @@ function connect() {
     };
 }
 
-// Keep service worker alive — Manifest V3 service workers sleep after 30s of inactivity.
-// This alarm fires every 25 seconds to prevent that, keeping the WebSocket alive.
+function updateAggregateState() {
+    const isAnyPlaying = Array.from(tabStates.values()).some(p => p === true);
+
+    if (isAnyPlaying !== aggregatePlaying) {
+        // Debounce the transition to avoid flicker during autoplay/buffering/seeking
+        // We only debounce the "pause" (resume music) to be safe.
+        // Starting a video (pausing music) should be instant.
+        if (isAnyPlaying) {
+            clearTimeout(debounceTimer);
+            aggregatePlaying = true;
+            sendToApp('video_playing');
+        } else {
+            clearTimeout(debounceTimer);
+            debounceTimer = setTimeout(() => {
+                aggregatePlaying = false;
+                sendToApp('video_paused');
+            }, 1000); // 1s buffer for autoplay/refresh
+        }
+    }
+}
+
+function sendToApp(type) {
+    if (socket && socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({ type }));
+    }
+}
+
+// Keep service worker alive
 chrome.alarms.create('keepalive', { periodInMinutes: 0.4 });
 chrome.alarms.onAlarm.addListener((alarm) => {
     if (alarm.name === 'keepalive') {
@@ -49,26 +80,34 @@ chrome.alarms.onAlarm.addListener((alarm) => {
     }
 });
 
+// Clean up when a tab is closed
+chrome.tabs.onRemoved.addListener((tabId) => {
+    if (tabStates.has(tabId)) {
+        tabStates.delete(tabId);
+        updateAggregateState();
+    }
+});
+
 // Handle messages from content script AND popup
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    // Popup asking for status
     if (message.type === 'get_status') {
-        sendResponse({ connected: isConnected, ytPlaying, ytDetected });
-        return; // Synchronous response, no need for return true
+        sendResponse({
+            connected: isConnected,
+            ytPlaying: aggregatePlaying,
+            ytDetected: tabStates.size > 0
+        });
+        return;
     }
 
-    // Track YouTube state from content script
+    if (!sender.tab) return;
+    const tabId = sender.tab.id;
+
     if (message.type === 'video_playing') {
-        ytPlaying = true;
-        ytDetected = true;
+        tabStates.set(tabId, true);
+        updateAggregateState();
     } else if (message.type === 'video_paused') {
-        ytPlaying = false;
-        ytDetected = true;
-    }
-
-    // Forward to native app via WebSocket
-    if (socket && socket.readyState === WebSocket.OPEN) {
-        socket.send(JSON.stringify(message));
+        tabStates.set(tabId, false);
+        updateAggregateState();
     }
 });
 

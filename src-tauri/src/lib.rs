@@ -24,6 +24,8 @@ pub struct AppState {
     pub access_token: Option<String>,
     pub client_id: Option<String>,
     pub code_verifier: Option<String>,
+    pub app_paused_spotify: bool,
+    pub manual_pause_detected: bool,
 }
 
 impl Default for AppState {
@@ -37,6 +39,8 @@ impl Default for AppState {
             access_token: None,
             client_id: None,
             code_verifier: None,
+            app_paused_spotify: false,
+            manual_pause_detected: false,
         }
     }
 }
@@ -223,7 +227,7 @@ async fn start_extension_bridge<R: Runtime>(app: AppHandle<R>, state: Arc<Mutex<
 }
 
 async fn handle_extension_event<R: Runtime>(event: &str, app: &AppHandle<R>, state: &Arc<Mutex<AppState>>) {
-    let (token, playing, mut device_id, sync_enabled) = {
+    let (token, yt_playing, mut device_id, sync_enabled) = {
         let mut s = state.lock().unwrap();
         match event {
             "video_playing" => s.yt_playing = true,
@@ -233,24 +237,64 @@ async fn handle_extension_event<R: Runtime>(event: &str, app: &AppHandle<R>, sta
         (s.access_token.clone(), s.yt_playing, s.current_device_id.clone(), s.sync_enabled)
     };
 
-    // Only control Spotify if sync is enabled
-    if sync_enabled {
-        if let Some(token) = token {
-            if device_id.is_none() {
-                if let Some(found) = spotify_get_active_device(&token).await {
-                    device_id = Some(found.clone());
+    app.emit("sync_event", if yt_playing { "yt_playing" } else { "yt_paused" }).unwrap();
+
+    if !sync_enabled { return; }
+
+    if let Some(token) = token {
+        // Ensure we have a device ID
+        if device_id.is_none() {
+            if let Some(found) = spotify_get_active_device(&token).await {
+                device_id = Some(found.clone());
+                let mut s = state.lock().unwrap();
+                s.current_device_id = Some(found);
+                s.save();
+            }
+        }
+
+        if yt_playing {
+            // Case 1 & 8: YouTube just started playing (or continues playing)
+            // We want to pause Spotify ONLY if it is currently playing.
+            if let Some(playback) = spotify_get_playback_state(&token).await {
+                let spotify_is_playing = playback["is_playing"].as_bool().unwrap_or(false);
+                
+                if spotify_is_playing {
+                    // PAUSE SPOTIFY
+                    let _ = spotify_control(&token, false, device_id).await;
                     let mut s = state.lock().unwrap();
-                    s.current_device_id = Some(found);
-                    s.save();
+                    s.app_paused_spotify = true;
+                    s.manual_pause_detected = false;
+                    println!("[STILLSOUND] Paused Spotify because YouTube started");
+                } else {
+                    // Spotify was already paused. 
+                    // Case 3: If user manually paused it before YouTube started, we shouldn't resume later.
+                    let mut s = state.lock().unwrap();
+                    if !s.app_paused_spotify {
+                        s.manual_pause_detected = true;
+                        println!("[STILLSOUND] Respecting manual Spotify pause");
+                    }
                 }
             }
+        } else {
+            // Case 1, 2, 5, 6, 7, 10: All YouTube videos stopped (or debounced transition)
+            // RESUME SPOTIFY only if we were the ones who paused it.
+            let should_resume = {
+                let s = state.lock().unwrap();
+                s.app_paused_spotify && !s.manual_pause_detected
+            };
 
-            let should_play_spotify = !playing;
-            let _ = spotify_control(&token, should_play_spotify, device_id).await;
+            if should_resume {
+                let _ = spotify_control(&token, true, device_id).await;
+                let mut s = state.lock().unwrap();
+                s.app_paused_spotify = false;
+                println!("[STILLSOUND] Resumed Spotify (auto)");
+            } else {
+                let mut s = state.lock().unwrap();
+                s.app_paused_spotify = false;
+                println!("[STILLSOUND] Staying paused (user intent)");
+            }
         }
     }
-    
-    app.emit("sync_event", if playing { "yt_playing" } else { "yt_paused" }).unwrap();
 }
 
 // --- Spotify Callback Server ---

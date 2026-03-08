@@ -18,7 +18,8 @@ function attachVideo() {
         chrome.runtime.sendMessage({ type: 'video_paused' });
     });
 
-    // Report current state immediately
+    // Report current state immediately if video is already there
+    // We only send if it's NOT paused. If it's paused, we wait for 'play'.
     if (!video.paused) {
         chrome.runtime.sendMessage({ type: 'video_playing' });
     }
@@ -28,8 +29,8 @@ function attachVideo() {
 const observer = new MutationObserver(attachVideo);
 observer.observe(document.body, { childList: true, subtree: true });
 
-// Periodic fallback for YouTube's SPA navigation
-setInterval(attachVideo, 2000);
+// Periodic fallback for YouTube's SPA navigation (every 1s)
+setInterval(attachVideo, 1000);
 
 // Initial attach
 attachVideo();
