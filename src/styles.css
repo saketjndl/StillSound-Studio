@@ -626,3 +626,47 @@ input[type="range"]::-moz-range-thumb {
     font-weight: 600;
     color: var(--orange);
 }
+
+/* --- Settings --- */
+
+.settings-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 24px;
+}
+
+.settings-header h1 {
+    font-size: 18px;
+    font-weight: 700;
+}
+
+.icon-btn {
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--dim);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.icon-btn:hover {
+    color: var(--text);
+    border-color: var(--faint);
+}
+
+.ctrl-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.ctrl-desc {
+    font-size: 11px;
+    color: var(--faint);
+}

@@ -21,6 +21,14 @@
                 <span class="tb-name">StillSound</span>
             </div>
             <div class="tb-right">
+                <button class="tb-btn" id="win-settings" style="display:none">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                        stroke-width="2.2">
+                        <circle cx="12" cy="12" r="3" />
+                        <path
+                            d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+                    </svg>
+                </button>
                 <button class="tb-btn" id="win-min">
                     <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                         stroke-width="2.5">
@@ -129,7 +137,56 @@
                 <div class="footer-cta">
                     built by saketjndl (.sodiumcyanide) · <a href="#" id="star-dash">&#9733; star on github</a>
                 </div>
-                <div class="footer-ver">v1.0.0</div>
+                <div class="footer-ver">v1.1.0</div>
+            </div>
+        </main>
+
+        <!-- SETTINGS -->
+        <main class="view" id="v-settings" style="display:none">
+            <div class="settings-header">
+                <button class="icon-btn" id="settings-back">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M19 12H5M12 19l-7-7 7-7" />
+                    </svg>
+                </button>
+                <h1>Settings</h1>
+            </div>
+
+            <div class="ctrl-section">
+                <div class="ctrl-row">
+                    <div class="ctrl-info">
+                        <span class="ctrl-label">Autostart</span>
+                        <span class="ctrl-desc">Launch StillSound when computer starts</span>
+                    </div>
+                    <label class="toggle">
+                        <input type="checkbox" id="autostart-toggle">
+                        <span class="toggle-track"></span>
+                    </label>
+                </div>
+                <div class="ctrl-row" style="margin-top: 14px;">
+                    <div class="ctrl-info">
+                        <span class="ctrl-label">Auto start minimised</span>
+                        <span class="ctrl-desc">Start hidden in the tray on boot</span>
+                    </div>
+                    <label class="toggle">
+                        <input type="checkbox" id="autostart-minimized-toggle">
+                        <span class="toggle-track"></span>
+                    </label>
+                </div>
+                <div class="ctrl-row" style="margin-top: 14px;">
+                    <div class="ctrl-info">
+                        <span class="ctrl-label">Minimise to tray</span>
+                        <span class="ctrl-desc">Hide window instead of standard minimize</span>
+                    </div>
+                    <label class="toggle">
+                        <input type="checkbox" id="minimize-to-tray-toggle">
+                        <span class="toggle-track"></span>
+                    </label>
+                </div>
+            </div>
+
+            <div class="footer">
+                <div class="footer-ver">StillSound Studio v1.1.0</div>
             </div>
         </main>
     </div>

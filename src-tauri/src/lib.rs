@@ -1,4 +1,6 @@
-use tauri::{AppHandle, Runtime, Emitter};
+use tauri::{AppHandle, Runtime, Emitter, Manager};
+use tauri::tray::{TrayIconBuilder, TrayIconEvent};
+use tauri::menu::{Menu, MenuItem};
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
 use futures_util::StreamExt;
@@ -23,6 +25,9 @@ pub struct AppState {
     pub app_paused_spotify: bool,
     pub manual_pause_detected: bool,
     pub sync_enabled: bool,
+    pub autostart: bool,
+    pub autostart_minimized: bool,
+    pub minimize_to_tray: bool,
     pub volume: u32,
     pub spotify_ready: bool,
     pub yt_playing: bool,
@@ -33,6 +38,9 @@ impl Default for AppState {
     fn default() -> Self {
         Self {
             sync_enabled: true,
+            autostart: false,
+            autostart_minimized: false,
+            minimize_to_tray: false,
             volume: 50,
             spotify_ready: false,
             yt_playing: false,
@@ -453,10 +461,34 @@ async fn spotify_set_volume(state: &Arc<Mutex<AppState>>, volume: u32, device_id
 // --- Tauri Commands ---
 
 #[tauri::command]
-fn update_settings(state: tauri::State<StateWrapper>, sync: bool, vol: u32) -> Result<(), String> {
+fn update_settings(
+    app: tauri::AppHandle,
+    state: tauri::State<StateWrapper>, 
+    sync: bool, 
+    vol: u32,
+    autostart: bool,
+    autostart_minimized: bool,
+    minimize_to_tray: bool
+) -> Result<(), String> {
+    use tauri_plugin_autostart::ManagerExt;
+    
     let mut s = state.0.lock().unwrap();
+    
+    // Handle autostart plugin
+    if s.autostart != autostart {
+        let manager = app.autolaunch();
+        if autostart {
+            let _ = manager.enable();
+        } else {
+            let _ = manager.disable();
+        }
+    }
+
     s.sync_enabled = sync;
     s.volume = vol;
+    s.autostart = autostart;
+    s.autostart_minimized = autostart_minimized;
+    s.minimize_to_tray = minimize_to_tray;
     s.save();
     Ok(())
 }
@@ -553,8 +585,78 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_autostart::init(tauri_plugin_autostart::MacosLauncher::LaunchAgent, Some(vec!["--minimized"])))
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            let _ = app
+                .get_webview_window("main")
+                .expect("no main window")
+                .set_focus();
+        }))
         .manage(state_wrapper)
         .setup(move |app| {
+            // Handle autostart minimized
+            let args: Vec<String> = std::env::args().collect();
+            if args.contains(&"--minimized".to_string()) {
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.hide();
+                }
+            }
+
+            // Tray Menu
+            let quit_i = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>).unwrap();
+            let show_i = MenuItem::with_id(app, "show", "Show StillSound", true, None::<&str>).unwrap();
+            let menu = Menu::with_items(app, &[&show_i, &quit_i]).unwrap();
+
+            let _tray = TrayIconBuilder::new()
+                .icon(app.default_window_icon().unwrap().clone())
+                .tooltip("StillSound Studio")
+                .menu(&menu)
+                .on_menu_event(|app, event| match event.id.as_ref() {
+                    "quit" => {
+                        app.exit(0);
+                    }
+                    "show" => {
+                        if let Some(window) = app.get_webview_window("main") {
+                            let _ = window.show();
+                            let _ = window.set_focus();
+                        }
+                    }
+                    _ => {}
+                })
+                .on_tray_icon_event(|tray, event| {
+                    if let TrayIconEvent::Click {
+                        button: tauri::tray::MouseButton::Left,
+                        ..
+                    } = event
+                    {
+                        let app = tray.app_handle();
+                        if let Some(window) = app.get_webview_window("main") {
+                            let _ = window.show();
+                            let _ = window.set_focus();
+                        }
+                    }
+                })
+                .build(app).unwrap();
+
+            // Minimize to tray handling
+            let state_for_event = state.clone();
+            if let Some(window) = app.get_webview_window("main") {
+                let win_clone = window.clone();
+                window.on_window_event(move |event| {
+                    if let tauri::WindowEvent::Resized(_) = event {
+                        if win_clone.is_minimized().unwrap_or(false) {
+                            let to_tray = {
+                                let s = state_for_event.lock().unwrap();
+                                s.minimize_to_tray
+                            };
+                            if to_tray {
+                                let _ = win_clone.hide();
+                            }
+                        }
+                    }
+                });
+            }
+
             let handle = app.handle().clone();
             let state_arc = state.clone();
             

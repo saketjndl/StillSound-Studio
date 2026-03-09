@@ -4,6 +4,7 @@ const { listen } = window.__TAURI__.event;
 // --- refs ---
 const vSetup = document.getElementById('v-setup');
 const vDash = document.getElementById('v-dash');
+const vSettings = document.getElementById('v-settings');
 const tbDot = document.getElementById('tb-dot');
 const clientId = document.getElementById('client-id');
 const sDot = document.getElementById('s-dot');
@@ -15,6 +16,12 @@ const volSlider = document.getElementById('vol-slider');
 const volNum = document.getElementById('vol-num');
 const syncToggle = document.getElementById('sync-toggle');
 
+const winSettingsBtn = document.getElementById('win-settings');
+const settingsBack = document.getElementById('settings-back');
+const autostartToggle = document.getElementById('autostart-toggle');
+const autostartMinimizedToggle = document.getElementById('autostart-minimized-toggle');
+const minimizeToTrayToggle = document.getElementById('minimize-to-tray-toggle');
+
 const GITHUB = 'https://github.com/saketjndl/StillSound-Studio';
 
 // --- volume debounce ---
@@ -25,6 +32,8 @@ let volTimer = null;
 function goDash() {
     vSetup.style.display = 'none';
     vDash.style.display = 'flex';
+    vSettings.style.display = 'none';
+    winSettingsBtn.style.display = 'flex';
     tbDot.classList.add('ok');
     pSpotify.classList.add('on');
     pSpotify.textContent = 'connected';
@@ -36,6 +45,16 @@ function goDash() {
     }).catch(() => { });
 }
 
+function saveSettings() {
+    invoke('update_settings', {
+        sync: syncToggle.checked,
+        vol: parseInt(volSlider.value),
+        autostart: autostartToggle.checked,
+        autostartMinimized: autostartMinimizedToggle.checked,
+        minimizeToTray: minimizeToTrayToggle.checked
+    }).catch(console.error);
+}
+
 function openGithub() {
     invoke('open_url', { url: GITHUB }).catch(() => {
         window.__TAURI__?.shell?.open(GITHUB);
@@ -45,6 +64,14 @@ function openGithub() {
 // --- window controls ---
 document.getElementById('win-min').onclick = () => invoke('minimize_window');
 document.getElementById('win-close').onclick = () => invoke('close_window');
+winSettingsBtn.onclick = () => {
+    vDash.style.display = 'none';
+    vSettings.style.display = 'flex';
+};
+settingsBack.onclick = () => {
+    vSettings.style.display = 'none';
+    vDash.style.display = 'flex';
+};
 
 // --- spotify dashboard link ---
 document.getElementById('open-dash').addEventListener('click', () => {
@@ -144,13 +171,11 @@ volSlider.addEventListener('input', (e) => {
     }, 250);
 });
 
-// --- sync toggle ---
-syncToggle.addEventListener('change', () => {
-    invoke('update_settings', {
-        sync: syncToggle.checked,
-        vol: parseInt(volSlider.value)
-    });
-});
+// --- settings toggles ---
+syncToggle.addEventListener('change', saveSettings);
+autostartToggle.addEventListener('change', saveSettings);
+autostartMinimizedToggle.addEventListener('change', saveSettings);
+minimizeToTrayToggle.addEventListener('change', saveSettings);
 
 // --- init ---
 window.addEventListener('DOMContentLoaded', async () => {
@@ -163,6 +188,9 @@ window.addEventListener('DOMContentLoaded', async () => {
             volNum.textContent = s.volume + '%';
         }
         syncToggle.checked = s.sync_enabled !== false;
+        autostartToggle.checked = !!s.autostart;
+        autostartMinimizedToggle.checked = !!s.autostart_minimized;
+        minimizeToTrayToggle.checked = !!s.minimize_to_tray;
 
         if (s.spotify_ready) goDash();
     } catch (e) {
