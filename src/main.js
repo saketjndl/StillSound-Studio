@@ -171,11 +171,48 @@ volSlider.addEventListener('input', (e) => {
     }, 250);
 });
 
+const CURRENT_VERSION = '1.1.0';
+
+// --- update check ---
+async function checkUpdates(manual = false) {
+    const statusText = document.getElementById('update-status');
+    const checkBtn = document.getElementById('check-updates');
+
+    if (manual) {
+        checkBtn.textContent = 'Checking...';
+        checkBtn.disabled = true;
+    }
+
+    try {
+        const res = await fetch('https://api.github.com/repos/saketjndl/StillSound-Studio/releases/latest');
+        if (!res.ok) throw new Error('API down');
+        const data = await res.json();
+        const latestVersion = data.tag_name.replace('v', '');
+
+        if (latestVersion !== CURRENT_VERSION) {
+            statusText.textContent = `New version available: v${latestVersion}`;
+            statusText.style.color = 'var(--orange)';
+            if (manual) {
+                invoke('open_url', { url: data.html_url });
+            }
+        } else {
+            statusText.textContent = 'You are on the latest version';
+            statusText.style.color = '';
+        }
+    } catch (e) {
+        statusText.textContent = 'Update check failed';
+    } finally {
+        checkBtn.textContent = 'Check';
+        checkBtn.disabled = false;
+    }
+}
+
 // --- settings toggles ---
 syncToggle.addEventListener('change', saveSettings);
 autostartToggle.addEventListener('change', saveSettings);
 autostartMinimizedToggle.addEventListener('change', saveSettings);
 minimizeToTrayToggle.addEventListener('change', saveSettings);
+document.getElementById('check-updates').onclick = () => checkUpdates(true);
 
 // --- init ---
 window.addEventListener('DOMContentLoaded', async () => {
@@ -193,6 +230,9 @@ window.addEventListener('DOMContentLoaded', async () => {
         minimizeToTrayToggle.checked = !!s.minimize_to_tray;
 
         if (s.spotify_ready) goDash();
+
+        // Auto check updates on start
+        setTimeout(() => checkUpdates(false), 2000);
     } catch (e) {
         console.error('init error:', e);
     }
