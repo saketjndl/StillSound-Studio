@@ -4,23 +4,25 @@
 
 <h1 align="center">StillSound Studio</h1>
 
-<div align="center">
-  <video src="https://github.com/saketjndl/StillSound-Studio/raw/main/media/demo.mp4" width="100%" autoplay loop muted playsinline></video>
-</div>
-
 <p align="center">
   <strong>Auto-sync Spotify with YouTube — built for students who study with music.</strong>
 </p>
 
 <p align="center">
   <a href="https://github.com/saketjndl/StillSound-Studio/releases">Download</a> ·
-  <a href="#installation">Install</a> ·
+  <a href="#demo">Demo</a> ·
   <a href="#how-it-works">How it works</a>
 </p>
 
 ---
 
 StillSound automatically pauses your Spotify when you play a YouTube video and resumes it when you stop. No more alt-tabbing to pause your music during lectures.
+
+## Demo
+
+<div align="center">
+  <img src="media/demo.gif" alt="StillSound Demo" width="100%">
+</div>
 
 ## Versions & Changelog
 
