@@ -6,23 +6,23 @@
 
 <p align="center">
   <a href="https://github.com/saketjndl/StillSound-Studio/releases">
-    <img alt="Version" src="https://img.shields.io/badge/version-1.1.0-blue.svg?style=flat-square">
+    <img alt="Version" src="https://img.shields.io/badge/version-1.1.0-blue.svg?style=for-the-badge">
   </a>
   <a href="https://github.com/saketjndl/StillSound-Studio/releases">
-    <img alt="Downloads" src="https://img.shields.io/github/downloads/saketjndl/StillSound-Studio/total.svg?style=flat-square">
+    <img alt="Downloads" src="https://img.shields.io/github/downloads/saketjndl/StillSound-Studio/total.svg?style=for-the-badge">
   </a>
   <a href="https://github.com/saketjndl/StillSound-Studio/stargazers">
-    <img alt="Stars" src="https://img.shields.io/github/stars/saketjndl/StillSound-Studio.svg?style=flat-square">
+    <img alt="Stars" src="https://img.shields.io/github/stars/saketjndl/StillSound-Studio.svg?style=for-the-badge">
   </a>
   <a href="https://github.com/saketjndl/StillSound-Studio/issues">
-    <img alt="Issues" src="https://img.shields.io/github/issues/saketjndl/StillSound-Studio.svg?style=flat-square">
+    <img alt="Issues" src="https://img.shields.io/github/issues/saketjndl/StillSound-Studio.svg?style=for-the-badge">
   </a>
   <a href="LICENSE">
-    <img alt="License" src="https://img.shields.io/badge/license-MIT-green.svg?style=flat-square">
+    <img alt="License" src="https://img.shields.io/badge/license-MIT-green.svg?style=for-the-badge">
   </a>
-  <img alt="Rust" src="https://img.shields.io/badge/built_with-Rust-f26d00.svg?style=flat-square&logo=rust">
-  <img alt="Tauri" src="https://img.shields.io/badge/built_with-Tauri-24c8db.svg?style=flat-square&logo=tauri">
-  <img alt="Windows" src="https://img.shields.io/badge/platform-Windows-0078d7.svg?style=flat-square&logo=windows">
+  <img alt="Rust" src="https://img.shields.io/badge/built_with-Rust-f26d00.svg?style=for-the-badge&logo=rust">
+  <img alt="Tauri" src="https://img.shields.io/badge/built_with-Tauri-24c8db.svg?style=for-the-badge&logo=tauri">
+  <img alt="Windows" src="https://img.shields.io/badge/platform-Windows-0078d7.svg?style=for-the-badge&logo=windows">
 </p>
 
 <p align="center">
