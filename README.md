@@ -5,7 +5,7 @@
 <h1 align="center">StillSound Studio</h1>
 
 <div align="center">
-  <video src="media/demo.mp4" width="100%" autoplay loop muted playsinline poster="src-tauri/icons/icon.png"></video>
+  <video src="https://github.com/saketjndl/StillSound-Studio/raw/main/media/demo.mp4" width="100%" autoplay loop muted playsinline></video>
 </div>
 
 <p align="center">
@@ -22,12 +22,20 @@
 
 StillSound automatically pauses your Spotify when you play a YouTube video and resumes it when you stop. No more alt-tabbing to pause your music during lectures.
 
-## The Versions
+## Versions & Changelog
 
-StillSound is currently available in two distinct components:
+### v1.1.0 (Latest)
+This update turns StillSound into a background power-tool:
+- **Minimize to Tray**: Keep the app running in the system tray without cluttering your taskbar.
+- **Autostart**: Optionally launch StillSound on system boot.
+- **Single Instance**: Prevents multiple instances of the app from running simultaneously.
+- **UI Refinement**: Polished dashboard with better sync status indicators.
 
-1.  **StillSound Studio (v1.1.0)**: The modern, full-featured desktop application built with Tauri. It features a premium UI, system tray support, autostart, and a robust sync engine.
-2.  **StillSound Sync**: The lightweight browser extension that bridges your watching experience with the desktop app. It detects YouTube playback and sends sync signals over a local WebSocket.
+### v1.0.0
+The initial release featuring the core sync engine:
+- **WebSocket Bridge**: High-speed communication between the browser and desktop.
+- **Spotify OAuth PKCE**: Secure authentication with your Spotify account.
+- **Auto-Pause/Resume**: The foundation of StillSound—works perfectly with YouTube.
 
 
 ## How It Works
