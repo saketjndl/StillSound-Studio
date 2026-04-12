@@ -171,7 +171,7 @@ volSlider.addEventListener('input', (e) => {
     }, 250);
 });
 
-const CURRENT_VERSION = '1.1.0';
+let appVersion = '1.2.0'; // Fallback
 
 // --- update check ---
 async function checkUpdates(manual = false) {
@@ -189,20 +189,26 @@ async function checkUpdates(manual = false) {
         const data = await res.json();
         const latestVersion = data.tag_name.replace('v', '');
 
-        if (latestVersion !== CURRENT_VERSION) {
-            statusText.textContent = `New version available: v${latestVersion}`;
+        if (latestVersion !== appVersion) {
+            statusText.innerHTML = `Update available: <strong>v${latestVersion}</strong>`;
             statusText.style.color = 'var(--orange)';
+            
+            // Auto-open on manual click, or show download button
             if (manual) {
-                invoke('open_url', { url: data.html_url });
+                // Find installer in assets if possible
+                const installer = data.assets.find(a => a.name.endsWith('.exe'));
+                const url = installer ? installer.browser_download_url : data.html_url;
+                invoke('open_url', { url });
             }
         } else {
             statusText.textContent = 'You are on the latest version';
             statusText.style.color = '';
         }
     } catch (e) {
-        statusText.textContent = 'Update check failed';
+        console.error('Update check failed:', e);
+        if (manual) statusText.textContent = 'Update check failed';
     } finally {
-        checkBtn.textContent = 'Check';
+        checkBtn.textContent = manual ? 'Check' : 'Check';
         checkBtn.disabled = false;
     }
 }
@@ -231,8 +237,15 @@ window.addEventListener('DOMContentLoaded', async () => {
 
         if (s.spotify_ready) goDash();
 
+        // Get actual version from app
+        const version = await invoke('get_app_version');
+        appVersion = version;
+        document.querySelectorAll('.footer-ver').forEach(el => {
+            el.textContent = (el.textContent.includes('Studio') ? 'StillSound Studio v' : 'v') + version;
+        });
+
         // Auto check updates on start
-        setTimeout(() => checkUpdates(false), 2000);
+        checkUpdates(false);
     } catch (e) {
         console.error('init error:', e);
     }

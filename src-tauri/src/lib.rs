@@ -594,6 +594,11 @@ async fn get_spotify_volume(state: tauri::State<'_, StateWrapper>) -> Result<u32
     Ok(s.volume)
 }
 
+#[tauri::command]
+fn get_app_version() -> String {
+    env!("CARGO_PKG_VERSION").to_string()
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let initial_state = AppState::load();
@@ -712,6 +717,7 @@ pub fn run() {
             minimize_window,
             get_initial_state,
             get_spotify_volume,
+            get_app_version,
             open_url
         ])
         .run(tauri::generate_context!())
