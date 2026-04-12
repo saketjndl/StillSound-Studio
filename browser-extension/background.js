@@ -16,30 +16,33 @@ function connect() {
     }
 
     try {
+        console.log('[StillSound] Attempting connection to', SERVER_URL);
         socket = new WebSocket(SERVER_URL);
     } catch (e) {
+        console.error('[StillSound] Connection error:', e);
         isConnected = false;
         setTimeout(connect, reconnectInterval);
         return;
     }
 
     socket.onopen = () => {
-        console.log('[StillSound] Connected to app');
+        console.log('[StillSound] WebSocket connected successfully');
         isConnected = true;
         reconnectInterval = 3000;
         // Sync current state on connect
         sendToApp(aggregatePlaying ? 'video_playing' : 'video_paused');
     };
 
-    socket.onclose = () => {
-        console.log('[StillSound] Disconnected, reconnecting...');
+    socket.onclose = (event) => {
+        console.log('[StillSound] WebSocket closed. Code:', event.code, 'Reason:', event.reason);
         isConnected = false;
         socket = null;
         setTimeout(connect, reconnectInterval);
         if (reconnectInterval < 15000) reconnectInterval += 2000;
     };
 
-    socket.onerror = () => {
+    socket.onerror = (err) => {
+        console.error('[StillSound] WebSocket error occurred:', err);
         isConnected = false;
     };
 }
@@ -72,7 +75,7 @@ function sendToApp(type) {
 }
 
 // Keep service worker alive
-api.alarms.create('keepalive', { periodInMinutes: 0.4 });
+api.alarms.create('keepalive', { periodInMinutes: 1.0 });
 api.alarms.onAlarm.addListener((alarm) => {
     if (alarm.name === 'keepalive') {
         if (!socket || socket.readyState !== WebSocket.OPEN) {
@@ -92,6 +95,9 @@ api.tabs.onRemoved.addListener((tabId) => {
 // Handle messages from content script AND popup
 api.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.type === 'get_status') {
+        if (!isConnected) {
+            connect();
+        }
         sendResponse({
             connected: isConnected,
             ytPlaying: aggregatePlaying,

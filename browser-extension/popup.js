@@ -29,11 +29,28 @@ function updateUI(res) {
 }
 
 function getStatus() {
-    api.runtime.sendMessage({ type: 'get_status' }, (res) => {
-        if (api.runtime.lastError) return;
-        updateUI(res);
-    });
+    try {
+        const message = { type: 'get_status' };
+        
+        // Use chrome namespace directly for callback compatibility in both browsers
+        // or handle the promise return if using browser namespace.
+        // Firefox's chrome.runtime.sendMessage supports callbacks.
+        const callback = (res) => {
+            const lastError = chrome.runtime.lastError;
+            if (lastError) return;
+            if (res) updateUI(res);
+        };
+
+        const result = api.runtime.sendMessage(message, callback);
+        
+        // If it returns a promise (Firefox browser namespace), handle it
+        if (result && typeof result.then === 'function') {
+            result.then(updateUI).catch(() => {});
+        }
+    } catch (e) {
+        console.warn('[StillSound] Error getting status:', e);
+    }
 }
 
 getStatus();
-setTimeout(getStatus, 800);
+setInterval(getStatus, 1000);

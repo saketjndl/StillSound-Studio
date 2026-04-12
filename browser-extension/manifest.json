@@ -1,7 +1,7 @@
 {
     "manifest_version": 3,
     "name": "StillSound Sync",
-    "version": "1.0.1",
+    "version": "1.2.0",
     "description": "Auto-sync Spotify with YouTube",
     "permissions": [
         "tabs",
@@ -9,11 +9,16 @@
         "alarms"
     ],
     "host_permissions": [
-        "*://*.youtube.com/*"
+        "*://*.youtube.com/*",
+        "*://127.0.0.1/*",
+        "*://localhost/*"
     ],
+    "content_security_policy": {
+        "extension_pages": "script-src 'self'; object-src 'self'; connect-src 'self' ws://127.0.0.1:9876 ws://localhost:9876"
+    },
     "background": {
-        "service_worker": "background.js",
-        "type": "module"
+        "scripts": ["background.js"],
+        "service_worker": "background.js"
     },
     "content_scripts": [
         {
@@ -29,10 +34,13 @@
     "action": {
         "default_popup": "popup.html",
         "default_icon": {
+            "48": "icons/icon128.png",
             "128": "icons/icon128.png"
-        }
+        },
+        "default_area": "navbar"
     },
     "icons": {
+        "48": "icons/icon128.png",
         "128": "icons/icon128.png"
     },
     "browser_specific_settings": {

@@ -6,7 +6,7 @@
 
 <p align="center">
   <a href="https://github.com/saketjndl/StillSound-Studio/releases">
-    <img alt="Version" src="https://img.shields.io/badge/version-1.1.0-blue.svg?style=for-the-badge">
+    <img alt="Version" src="https://img.shields.io/badge/version-1.2.0-blue.svg?style=for-the-badge">
   </a>
   <a href="https://github.com/saketjndl/StillSound-Studio/releases">
     <img alt="Downloads" src="https://img.shields.io/github/downloads/saketjndl/StillSound-Studio/total.svg?style=for-the-badge">
@@ -47,8 +47,12 @@ StillSound automatically pauses your Spotify when you play a YouTube video and r
 
 ## Versions & Changelog
 
-### v1.1.0 (Latest)
-This update turns StillSound into a background power-tool:
+### v1.2.0 (Latest)
+- **Multi-Browser Sync**: Intelligent cross-browser aggregation ensures Spotify only resumes when ALL connected browsers have stopped playing. No more race conditions when switching between Firefox and Brave.
+- **Firefox Compatibility**: Official support for Firefox with a Manifest V3 bridge.
+- **Robust WebSocket Engine**: Enhanced connection stability and automatic cleanup on browser/tab exit.
+
+### v1.1.0
 - **Minimize to Tray**: Keep the app running in the system tray without cluttering your taskbar.
 - **Autostart**: Optionally launch StillSound on system boot.
 - **Single Instance**: Prevents multiple instances of the app from running simultaneously.
@@ -64,10 +68,10 @@ The initial release featuring the core sync engine:
 ## How It Works
 
 ```
-┌──────────────────┐     WebSocket      ┌──────────────────┐     Spotify API     ┌──────────┐
-│  Browser Ext.    │ ◄───────────────► │  StillSound App  │ ◄────────────────► │  Spotify  │
-│  (Chrome)        │   localhost:9876    │  (Desktop)       │     OAuth + REST    │          │
-└──────────────────┘                    └──────────────────┘                     └──────────┘
+┌─────────────────────┐     WebSocket      ┌──────────────────┐     Spotify API     ┌──────────┐
+│ Multiple Browsers   │ ◄───────────────► │  StillSound App  │ ◄────────────────► │  Spotify  │
+│ (Chrome, FF, Brave) │   localhost:9876    │  (Desktop)       │     OAuth + REST    │          │
+└─────────────────────┘                    └──────────────────┘                     └──────────┘
 ```
 
 1. The **browser extension** detects when a YouTube video plays or pauses.
@@ -84,12 +88,17 @@ The initial release featuring the core sync engine:
 2. Run the installer — choose where to install.
 3. Launch **StillSound** from the Start Menu or desktop.
 
-### Browser Extension (Chrome)
-
+### Browser Extension (Chrome / Brave / Firefox)
+#### Chrome & Brave
 1. Download or clone this repository to get the `browser-extension` folder.
-2. Open Chrome → `chrome://extensions/`
+2. Open Browser → `chrome://extensions/`
 3. Enable **Developer Mode** (toggle in the top right).
 4. Click **Load Unpacked** → select the `browser-extension` folder.
+
+#### Firefox
+1. Open Firefox → `about:debugging` → "This Firefox".
+2. Click **Load Temporary Add-on**.
+3. Select the `manifest.json` inside the `browser-extension` folder.
 
 ---
 

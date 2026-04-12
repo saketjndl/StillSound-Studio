@@ -32,6 +32,8 @@ pub struct AppState {
     pub spotify_ready: bool,
     pub yt_playing: bool,
     pub current_device_id: Option<String>,
+    #[serde(skip)]
+    pub active_bridges: std::collections::HashMap<String, bool>,
 }
 
 impl Default for AppState {
@@ -51,6 +53,7 @@ impl Default for AppState {
             refresh_token: None,
             app_paused_spotify: false,
             manual_pause_detected: false,
+            active_bridges: std::collections::HashMap::new(),
         }
     }
 }
@@ -106,8 +109,9 @@ async fn start_extension_bridge<R: Runtime>(app: AppHandle<R>, state: Arc<Mutex<
         let state_clone = state.clone();
         
         tauri::async_runtime::spawn(async move {
+            let bridge_id = (rand::random::<u64>()).to_string();
             let mut ws_stream = accept_async(stream).await.expect("Error during WS handshake");
-            println!("[STILLSOUND] Chrome Extension Linked");
+            println!("[STILLSOUND] Extension Linked: {}", bridge_id);
             app_clone.emit("bridge_linked", ()).unwrap();
 
             while let Some(msg) = ws_stream.next().await {
@@ -117,23 +121,36 @@ async fn start_extension_bridge<R: Runtime>(app: AppHandle<R>, state: Arc<Mutex<
                         let event: serde_json::Value = serde_json::from_str(text).unwrap_or_default();
                         
                         if let Some(event_type) = event["type"].as_str() {
-                            handle_extension_event(event_type, &app_clone, &state_clone).await;
+                            handle_extension_event(event_type, Some(bridge_id.clone()), &app_clone, &state_clone).await;
                         }
                     }
                 }
             }
+            
+            // Cleanup on disconnect
+            println!("[STILLSOUND] Extension Unlinked: {}", bridge_id);
+            handle_extension_event("disconnect", Some(bridge_id), &app_clone, &state_clone).await;
         });
     }
 }
 
-async fn handle_extension_event<R: Runtime>(event: &str, app: &AppHandle<R>, state: &Arc<Mutex<AppState>>) {
+async fn handle_extension_event<R: Runtime>(event: &str, bridge_id: Option<String>, app: &AppHandle<R>, state: &Arc<Mutex<AppState>>) {
     let (yt_playing, mut device_id, sync_enabled) = {
         let mut s = state.lock().unwrap();
-        match event {
-            "video_playing" => s.yt_playing = true,
-            "video_paused" => s.yt_playing = false,
-            _ => {}
+        
+        if let Some(bid) = bridge_id {
+            match event {
+                "video_playing" => { s.active_bridges.insert(bid, true); }
+                "video_paused" => { s.active_bridges.insert(bid, false); }
+                "disconnect" => { s.active_bridges.remove(&bid); }
+                _ => {}
+            }
         }
+
+        // Aggregate state: Playing if ANY bridge reports playing
+        let aggregate_playing = s.active_bridges.values().any(|&v| v);
+        s.yt_playing = aggregate_playing;
+
         (s.yt_playing, s.current_device_id.clone(), s.sync_enabled)
     };
 
