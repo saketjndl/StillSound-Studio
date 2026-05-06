@@ -6,7 +6,7 @@
 
 <p align="center">
   <a href="https://github.com/saketjndl/StillSound-Studio/releases">
-    <img alt="Version" src="https://img.shields.io/badge/version-1.2.0-blue.svg?style=for-the-badge">
+    <img alt="Version" src="https://img.shields.io/badge/version-2.0.0-blue.svg?style=for-the-badge">
   </a>
   <a href="https://github.com/saketjndl/StillSound-Studio/releases">
     <img alt="Downloads" src="https://img.shields.io/github/downloads/saketjndl/StillSound-Studio/total.svg?style=for-the-badge">
@@ -26,7 +26,7 @@
 </p>
 
 <p align="center">
-  <strong>Auto-sync Spotify with YouTube — built for students who study with music.</strong>
+  <strong>The Universal Media Sync Engine. Automatically pauses Spotify when any video plays.</strong>
 </p>
 
 <p align="center">
@@ -37,7 +37,7 @@
 
 ---
 
-StillSound automatically pauses your Spotify when you play a YouTube video and resumes it when you stop. No more alt-tabbing to pause your music during lectures.
+StillSound automatically pauses your Spotify when you play a video (on YouTube, Twitter, Reddit, Netflix, Twitch, etc.) and resumes it when you stop. No more alt-tabbing to pause your music during lectures or while browsing feeds.
 
 ## Demo
 
@@ -47,22 +47,23 @@ StillSound automatically pauses your Spotify when you play a YouTube video and r
 
 ## Versions & Changelog
 
-### v1.2.0 (Latest)
+### v2.0.0 (The Universal Update)
+- **Universal Multi-Site Support**: StillSound is no longer just for YouTube. It now seamlessly supports Twitter, Reddit, Netflix, Prime Video, Twitch, Coursera, Udemy, and more. Manage enabled sites via toggles directly in the app.
+- **Dynamic Island UI**: A complete aesthetic overhaul featuring an iOS-inspired Dynamic Island, complete with album art, track details, and playback controls.
+- **Audio-Responsive Aesthetics**: The desktop app and extension now glow and pulse with the exact colors of the Spotify album art you are currently listening to.
+- **Multi-Device Hand-off**: Transparently shows exactly which device Spotify is playing on (e.g., iPhone) and gracefully transitions state across devices.
+- **Bi-Directional Volume Sync**: Changes to your volume in the native Spotify app or on your phone instantly reflect on StillSound's new slider.
+- **Extension Controls**: Full music playback controls (Play, Pause, Next, Prev) right from your browser's extension popup.
+
+### v1.2.0
 - **Multi-Browser Sync**: Intelligent cross-browser aggregation ensures Spotify only resumes when ALL connected browsers have stopped playing. No more race conditions when switching between Firefox and Brave.
-- **Firefox Compatibility**: Official support for Firefox with a Manifest V3 bridge.
-- **Robust WebSocket Engine**: Enhanced connection stability and automatic cleanup on browser/tab exit.
 
 ### v1.1.0
 - **Minimize to Tray**: Keep the app running in the system tray without cluttering your taskbar.
 - **Autostart**: Optionally launch StillSound on system boot.
-- **Single Instance**: Prevents multiple instances of the app from running simultaneously.
-- **UI Refinement**: Polished dashboard with better sync status indicators.
 
 ### v1.0.0
-The initial release featuring the core sync engine:
-- **WebSocket Bridge**: High-speed communication between the browser and desktop.
-- **Spotify OAuth PKCE**: Secure authentication with your Spotify account.
-- **Auto-Pause/Resume**: The foundation of StillSound—works perfectly with YouTube.
+- Initial release featuring the core WebSocket sync engine and Spotify OAuth PKCE flow.
 
 
 ## How It Works
@@ -74,9 +75,9 @@ The initial release featuring the core sync engine:
 └─────────────────────┘                    └──────────────────┘                     └──────────┘
 ```
 
-1. The **browser extension** detects when a YouTube video plays or pauses.
-2. It sends that info to the **StillSound desktop app** over a local WebSocket.
-3. The desktop app tells **Spotify** to pause or resume accordingly.
+1. The **browser extension** detects when a supported video plays or pauses on any of the enabled websites.
+2. It intelligently aggregates the state and sends it to the **StillSound desktop app** over a local WebSocket.
+3. The desktop app commands **Spotify** to pause or resume accordingly.
 
 ---
 

@@ -8,8 +8,19 @@ const vSettings = document.getElementById('v-settings');
 const tbDot = document.getElementById('tb-dot');
 const clientId = document.getElementById('client-id');
 const sDot = document.getElementById('s-dot');
-const sTitle = document.getElementById('s-title');
 const sSub = document.getElementById('s-sub');
+
+// Music Island Refs
+const ambientBg = document.getElementById('ambient-bg');
+const albumArt = document.getElementById('album-art');
+const trackName = document.getElementById('track-name');
+const trackArtist = document.getElementById('track-artist');
+const btnPlayPause = document.getElementById('btn-play-pause');
+const iconPlay = document.getElementById('icon-play');
+const iconPause = document.getElementById('icon-pause');
+const btnNext = document.getElementById('btn-next');
+const btnPrev = document.getElementById('btn-prev');
+
 const pSpotify = document.getElementById('p-spotify');
 const pExt = document.getElementById('p-ext');
 const volSlider = document.getElementById('vol-slider');
@@ -23,6 +34,15 @@ const autostartMinimizedToggle = document.getElementById('autostart-minimized-to
 const minimizeToTrayToggle = document.getElementById('minimize-to-tray-toggle');
 
 const GITHUB = 'https://github.com/saketjndl/StillSound-Studio';
+
+const SITE_GROUPS = {
+    "Streaming": ["youtube.com", "netflix.com", "primevideo.com", "hotstar.com", "disneyplus.com", "twitch.tv", "crunchyroll.com", "vimeo.com", "jiocinema.com"],
+    "Social Media": ["twitter.com", "x.com", "reddit.com", "instagram.com", "facebook.com"],
+    "Educational": ["udemy.com", "coursera.org", "khanacademy.org", "nptel.ac.in"],
+    "Conferencing": ["meet.google.com", "zoom.us", "teams.microsoft.com"]
+};
+
+let enabledSites = {};
 
 // --- volume debounce ---
 let volTimer = null;
@@ -51,7 +71,8 @@ function saveSettings() {
         vol: parseInt(volSlider.value),
         autostart: autostartToggle.checked,
         autostartMinimized: autostartMinimizedToggle.checked,
-        minimizeToTray: minimizeToTrayToggle.checked
+        minimizeToTray: minimizeToTrayToggle.checked,
+        enabledSites: enabledSites
     }).catch(console.error);
 }
 
@@ -64,14 +85,33 @@ function openGithub() {
 // --- window controls ---
 document.getElementById('win-min').onclick = () => invoke('minimize_window');
 document.getElementById('win-close').onclick = () => invoke('close_window');
-winSettingsBtn.onclick = () => {
-    vDash.style.display = 'none';
-    vSettings.style.display = 'flex';
-};
-settingsBack.onclick = () => {
-    vSettings.style.display = 'none';
-    vDash.style.display = 'flex';
-};
+
+function switchView(toSettings) {
+    if (toSettings) {
+        vDash.classList.add('fade-out');
+        setTimeout(() => {
+            vDash.style.display = 'none';
+            vDash.classList.remove('fade-out');
+            vSettings.style.display = 'flex';
+            vSettings.classList.add('fade-in');
+            setTimeout(() => vSettings.classList.remove('fade-in'), 300);
+        }, 300);
+        winSettingsBtn.style.display = 'none';
+    } else {
+        vSettings.classList.add('fade-out');
+        setTimeout(() => {
+            vSettings.style.display = 'none';
+            vSettings.classList.remove('fade-out');
+            vDash.style.display = 'flex';
+            vDash.classList.add('fade-in');
+            setTimeout(() => vDash.classList.remove('fade-in'), 300);
+        }, 300);
+        winSettingsBtn.style.display = 'block';
+    }
+}
+
+winSettingsBtn.addEventListener('click', () => switchView(true));
+settingsBack.addEventListener('click', () => switchView(false));
 
 // --- spotify dashboard link ---
 document.getElementById('open-dash').addEventListener('click', () => {
@@ -160,7 +200,19 @@ document.getElementById('refresh-device').addEventListener('click', async () => 
     setTimeout(() => { btn.innerHTML = orig; }, 2000);
 });
 
-// --- volume (debounced) ---
+// --- volume (debounced & synced) ---
+let isDraggingVolume = false;
+
+['mousedown', 'touchstart'].forEach(evt => 
+    volSlider.addEventListener(evt, () => isDraggingVolume = true)
+);
+
+['mouseup', 'mouseleave', 'touchend'].forEach(evt => 
+    volSlider.addEventListener(evt, () => {
+        setTimeout(() => isDraggingVolume = false, 500); // Small delay to prevent jitter
+    })
+);
+
 volSlider.addEventListener('input', (e) => {
     const v = parseInt(e.target.value);
     volNum.textContent = v + '%';
@@ -171,7 +223,7 @@ volSlider.addEventListener('input', (e) => {
     }, 250);
 });
 
-let appVersion = '1.2.0'; // Fallback
+let appVersion = '2.0.0'; // Fallback
 
 // --- update check ---
 async function checkUpdates(manual = false) {
@@ -234,6 +286,66 @@ window.addEventListener('DOMContentLoaded', async () => {
         autostartToggle.checked = !!s.autostart;
         autostartMinimizedToggle.checked = !!s.autostart_minimized;
         minimizeToTrayToggle.checked = !!s.minimize_to_tray;
+        
+        if (s.enabled_sites) {
+            enabledSites = s.enabled_sites;
+        }
+
+        if (s.active_bridges && Object.keys(s.active_bridges).length > 0) {
+            pExt.classList.add('on');
+            pExt.textContent = 'linked';
+            const extHelp = document.getElementById('ext-help');
+            if (extHelp) extHelp.style.display = 'none';
+        }
+
+        // Render site toggles
+        const sitesList = document.getElementById('sites-list');
+        if (sitesList) {
+            for (const [group, sites] of Object.entries(SITE_GROUPS)) {
+                const groupHeader = document.createElement('div');
+                groupHeader.style.fontSize = '10px';
+                groupHeader.style.textTransform = 'uppercase';
+                groupHeader.style.letterSpacing = '0.05em';
+                groupHeader.style.color = 'rgba(255, 255, 255, 0.4)';
+                groupHeader.style.marginTop = sitesList.children.length > 0 ? '16px' : '0';
+                groupHeader.style.marginBottom = '6px';
+                groupHeader.textContent = group;
+                sitesList.appendChild(groupHeader);
+
+                sites.forEach(site => {
+                    const row = document.createElement('div');
+                    row.className = 'ctrl-row';
+                    row.style.padding = '4px 0';
+                    
+                    const label = document.createElement('span');
+                    label.className = 'ctrl-label';
+                    label.style.fontSize = '12px';
+                    label.textContent = site;
+                    
+                    const toggleLabel = document.createElement('label');
+                    toggleLabel.className = 'toggle';
+                    const checkbox = document.createElement('input');
+                    checkbox.type = 'checkbox';
+                    // Default to true if not present
+                    checkbox.checked = enabledSites[site] !== false;
+                    
+                    checkbox.addEventListener('change', (e) => {
+                        enabledSites[site] = e.target.checked;
+                        saveSettings();
+                    });
+                    
+                    const track = document.createElement('span');
+                    track.className = 'toggle-track';
+                    
+                    toggleLabel.appendChild(checkbox);
+                    toggleLabel.appendChild(track);
+                    
+                    row.appendChild(label);
+                    row.appendChild(toggleLabel);
+                    sitesList.appendChild(row);
+                });
+            }
+        }
 
         if (s.spotify_ready) goDash();
 
@@ -246,9 +358,122 @@ window.addEventListener('DOMContentLoaded', async () => {
 
         // Auto check updates on start
         checkUpdates(false);
+        
+        // Start polling track info
+        setInterval(fetchTrackInfo, 2000);
+        fetchTrackInfo();
+        
     } catch (e) {
         console.error('init error:', e);
     }
+});
+
+// --- Dynamic Island Logic ---
+
+let currentTrackName = "";
+let isPlaying = false;
+let lastVideoState = 'idle';
+let isOptimisticUpdate = false;
+let optimisticTimeout = null;
+
+async function fetchTrackInfo() {
+    try {
+        const info = await invoke('get_track_info');
+        if (!info || info.type !== 'spotify_state') return;
+        
+        if (info.track_name && info.track_name !== currentTrackName) {
+            currentTrackName = info.track_name;
+            trackName.textContent = info.track_name;
+            trackArtist.textContent = info.artist_name || 'Unknown Artist';
+            if (info.album_art) {
+                albumArt.src = info.album_art;
+                ambientBg.src = info.album_art;
+                albumArt.onload = () => albumArt.classList.add('loaded');
+            } else {
+                albumArt.classList.remove('loaded');
+                ambientBg.src = "";
+            }
+        }
+        
+        if (!info.track_name) {
+            trackName.textContent = 'Not Playing';
+            trackArtist.textContent = 'Open Spotify to see your music';
+            albumArt.classList.remove('loaded');
+            ambientBg.src = "";
+        }
+        
+        // Update device info and correct wording
+        if (lastVideoState === 'playing') {
+            sDot.className = 'status-dot-small video';
+            sSub.textContent = 'Auto-paused by video';
+        } else if (lastVideoState === 'paused') {
+            sDot.className = 'status-dot-small music';
+            sSub.textContent = info.is_playing ? 'Video paused — enjoy your music' : 'Video paused';
+        } else {
+            if (info.is_playing) {
+                sDot.className = 'status-dot-small music';
+                sSub.textContent = info.device_name ? `Playing on ${info.device_name}` : 'Spotify playing';
+            } else {
+                sDot.className = 'status-dot-small';
+                sSub.textContent = info.device_name ? `Connected to ${info.device_name}` : 'Spotify ready';
+            }
+        }
+        
+        if (!isOptimisticUpdate && info.is_playing !== isPlaying) {
+            isPlaying = info.is_playing;
+            if (isPlaying) {
+                iconPlay.classList.replace('visible', 'hidden');
+                iconPause.classList.replace('hidden', 'visible');
+                ambientBg.classList.add('playing');
+            } else {
+                iconPause.classList.replace('visible', 'hidden');
+                iconPlay.classList.replace('hidden', 'visible');
+                ambientBg.classList.remove('playing');
+            }
+        }
+        
+        // Sync Volume
+        if (info.volume_percent !== null && !isDraggingVolume) {
+            if (parseInt(volSlider.value) !== info.volume_percent) {
+                volSlider.value = info.volume_percent;
+                volNum.textContent = info.volume_percent + '%';
+            }
+        }
+    } catch (e) {
+        // silently fail on backend errors
+    }
+}
+
+// Media Controls
+btnPlayPause.addEventListener('click', async () => {
+    // Optimistic UI update
+    isPlaying = !isPlaying;
+    
+    isOptimisticUpdate = true;
+    clearTimeout(optimisticTimeout);
+    optimisticTimeout = setTimeout(() => { isOptimisticUpdate = false; }, 3000);
+    
+    if (isPlaying) {
+        iconPlay.classList.replace('visible', 'hidden');
+        iconPause.classList.replace('hidden', 'visible');
+        ambientBg.classList.add('playing');
+    } else {
+        iconPause.classList.replace('visible', 'hidden');
+        iconPlay.classList.replace('hidden', 'visible');
+        ambientBg.classList.remove('playing');
+    }
+    await invoke('spotify_play_pause').catch(console.error);
+    setTimeout(fetchTrackInfo, 500);
+});
+
+btnNext.addEventListener('click', async () => {
+    await invoke('spotify_skip_track', { next: true }).catch(console.error);
+    setTimeout(fetchTrackInfo, 500);
+});
+
+btnPrev.addEventListener('click', async () => {
+    await invoke('spotify_skip_track', { next: false }).catch(console.error);
+    setTimeout(fetchTrackInfo, 500);
 });
 
 // --- events ---
@@ -281,12 +506,13 @@ listen('bridge_linked', () => {
 
 listen('sync_event', (ev) => {
     if (ev.payload === 'yt_playing') {
-        sDot.className = 'status-dot-big video';
-        sTitle.textContent = 'Watching YouTube';
-        sSub.textContent = 'Spotify paused';
+        lastVideoState = 'playing';
+        sDot.className = 'status-dot-small video';
+        sSub.textContent = 'Auto-paused by video';
+        fetchTrackInfo();
     } else if (ev.payload === 'yt_paused') {
-        sDot.className = 'status-dot-big music';
-        sTitle.textContent = 'Spotify playing';
-        sSub.textContent = 'YouTube paused — enjoy your music';
+        lastVideoState = 'paused';
+        // The text will be evaluated accurately by fetchTrackInfo() based on isPlaying
+        fetchTrackInfo();
     }
 });

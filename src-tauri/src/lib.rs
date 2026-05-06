@@ -3,7 +3,7 @@ use tauri::tray::{TrayIconBuilder, TrayIconEvent};
 use tauri::menu::{Menu, MenuItem};
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
-use futures_util::StreamExt;
+use futures_util::{StreamExt, SinkExt};
 use tokio_tungstenite::accept_async;
 use tokio::net::TcpListener;
 use reqwest::Client;
@@ -32,6 +32,7 @@ pub struct AppState {
     pub spotify_ready: bool,
     pub yt_playing: bool,
     pub current_device_id: Option<String>,
+    pub enabled_sites: std::collections::HashMap<String, bool>,
     #[serde(skip)]
     pub active_bridges: std::collections::HashMap<String, bool>,
 }
@@ -53,6 +54,20 @@ impl Default for AppState {
             refresh_token: None,
             app_paused_spotify: false,
             manual_pause_detected: false,
+            enabled_sites: {
+                let mut map = std::collections::HashMap::new();
+                let sites = [
+                    "youtube.com", "netflix.com", "primevideo.com", "hotstar.com", "disneyplus.com",
+                    "twitch.tv", "crunchyroll.com", "vimeo.com", "jiocinema.com",
+                    "twitter.com", "x.com", "reddit.com", "instagram.com", "facebook.com",
+                    "udemy.com", "coursera.org", "khanacademy.org", "nptel.ac.in",
+                    "meet.google.com", "zoom.us", "teams.microsoft.com"
+                ];
+                for s in sites.iter() {
+                    map.insert(s.to_string(), true);
+                }
+                map
+            },
             active_bridges: std::collections::HashMap::new(),
         }
     }
@@ -99,6 +114,52 @@ impl AppState {
 
 // --- WebSocket Sync Engine (Extension Bridge) ---
 
+async fn get_spotify_track_info(state: &Arc<Mutex<AppState>>) -> serde_json::Value {
+    if let Some(playback) = spotify_get_playback_state(state).await {
+        let track = &playback["item"];
+        let is_playing = playback["is_playing"].as_bool().unwrap_or(false);
+        let album_art = track["album"]["images"].as_array()
+            .and_then(|imgs| {
+                imgs.iter()
+                    .find(|i| {
+                        let h = i["height"].as_u64().unwrap_or(0);
+                        h >= 64 && h <= 300
+                    })
+                    .or(imgs.first())
+            })
+            .and_then(|i| i["url"].as_str())
+            .unwrap_or("");
+
+        let volume = playback["device"]["volume_percent"].as_u64();
+        let device_name = playback["device"]["name"].as_str().unwrap_or("Spotify");
+        let device_type = playback["device"]["type"].as_str().unwrap_or("Device");
+
+        serde_json::json!({
+            "type": "spotify_state",
+            "is_playing": is_playing,
+            "track_name": track["name"].as_str().unwrap_or(""),
+            "artist_name": track["artists"][0]["name"].as_str().unwrap_or(""),
+            "album_art": album_art,
+            "album_name": track["album"]["name"].as_str().unwrap_or(""),
+            "volume_percent": volume,
+            "device_name": device_name,
+            "device_type": device_type
+        })
+    } else {
+        serde_json::json!({
+            "type": "spotify_state",
+            "is_playing": false,
+            "track_name": "",
+            "artist_name": "",
+            "album_art": "",
+            "album_name": "",
+            "volume_percent": null,
+            "device_name": "",
+            "device_type": ""
+        })
+    }
+}
+
 async fn start_extension_bridge<R: Runtime>(app: AppHandle<R>, state: Arc<Mutex<AppState>>) {
     let addr = "127.0.0.1:9876";
     let listener = TcpListener::bind(&addr).await.expect("Failed to bind WS port 9876");
@@ -110,18 +171,128 @@ async fn start_extension_bridge<R: Runtime>(app: AppHandle<R>, state: Arc<Mutex<
         
         tauri::async_runtime::spawn(async move {
             let bridge_id = (rand::random::<u64>()).to_string();
-            let mut ws_stream = accept_async(stream).await.expect("Error during WS handshake");
+            let ws_stream = accept_async(stream).await.expect("Error during WS handshake");
             println!("[STILLSOUND] Extension Linked: {}", bridge_id);
             app_clone.emit("bridge_linked", ()).unwrap();
 
-            while let Some(msg) = ws_stream.next().await {
+            let (mut write, mut read) = ws_stream.split();
+
+            // Send initial spotify state on connect
+            let info = get_spotify_track_info(&state_clone).await;
+            if let Ok(json) = serde_json::to_string(&info) {
+                let _ = write.send(tokio_tungstenite::tungstenite::Message::Text(json)).await;
+            }
+            
+            // Send site config
+            let sites = state_clone.lock().unwrap().enabled_sites.clone();
+            let config_msg = serde_json::json!({
+                "type": "site_config",
+                "sites": sites
+            });
+            if let Ok(json) = serde_json::to_string(&config_msg) {
+                let _ = write.send(tokio_tungstenite::tungstenite::Message::Text(json)).await;
+            }
+
+            while let Some(msg) = read.next().await {
                 if let Ok(msg) = msg {
                     if msg.is_text() {
                         let text = msg.to_text().unwrap();
                         let event: serde_json::Value = serde_json::from_str(text).unwrap_or_default();
                         
                         if let Some(event_type) = event["type"].as_str() {
-                            handle_extension_event(event_type, Some(bridge_id.clone()), &app_clone, &state_clone).await;
+                            match event_type {
+                                "get_spotify_info" => {
+                                    let info = get_spotify_track_info(&state_clone).await;
+                                    if let Ok(json) = serde_json::to_string(&info) {
+                                        let _ = write.send(tokio_tungstenite::tungstenite::Message::Text(json)).await;
+                                    }
+                                }
+                                "spotify_play" => {
+                                    println!("[STILLSOUND] Extension requested: PLAY");
+                                    let (device_id, yt_playing, sync_enabled) = {
+                                        let mut s = state_clone.lock().unwrap();
+                                        // User explicitly wants to play — clear manual pause
+                                        s.manual_pause_detected = false;
+                                        s.app_paused_spotify = false;
+                                        (s.current_device_id.clone(), s.yt_playing, s.sync_enabled)
+                                    };
+
+                                    match spotify_control(&state_clone, true, device_id.clone()).await {
+                                        Ok(_) => println!("[STILLSOUND] Play command succeeded"),
+                                        Err(e) => println!("[STILLSOUND] Play command failed: {}", e),
+                                    }
+
+                                    // Edge case: YouTube is still playing — re-pause after a brief moment
+                                    if yt_playing && sync_enabled {
+                                        println!("[STILLSOUND] YouTube is active — re-pausing Spotify (sync)");
+                                        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+                                        let _ = spotify_control(&state_clone, false, device_id).await;
+                                        let mut s = state_clone.lock().unwrap();
+                                        s.app_paused_spotify = true;
+                                    }
+
+                                    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+                                    let info = get_spotify_track_info(&state_clone).await;
+                                    if let Ok(json) = serde_json::to_string(&info) {
+                                        let _ = write.send(tokio_tungstenite::tungstenite::Message::Text(json)).await;
+                                    }
+                                }
+                                "spotify_pause" => {
+                                    println!("[STILLSOUND] Extension requested: PAUSE");
+                                    let device_id = {
+                                        let mut s = state_clone.lock().unwrap();
+                                        // User explicitly paused — mark as manual so auto-resume won't override
+                                        s.manual_pause_detected = true;
+                                        s.app_paused_spotify = false;
+                                        s.current_device_id.clone()
+                                    };
+
+                                    match spotify_control(&state_clone, false, device_id).await {
+                                        Ok(_) => println!("[STILLSOUND] Pause command succeeded"),
+                                        Err(e) => println!("[STILLSOUND] Pause command failed: {}", e),
+                                    }
+
+                                    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+                                    let info = get_spotify_track_info(&state_clone).await;
+                                    if let Ok(json) = serde_json::to_string(&info) {
+                                        let _ = write.send(tokio_tungstenite::tungstenite::Message::Text(json)).await;
+                                    }
+                                }
+                                "spotify_next" | "spotify_prev" => {
+                                    let is_next = event_type == "spotify_next";
+                                    println!("[STILLSOUND] Extension requested: {}", if is_next { "NEXT" } else { "PREV" });
+
+                                    let (device_id, yt_playing, sync_enabled) = {
+                                        let s = state_clone.lock().unwrap();
+                                        (s.current_device_id.clone(), s.yt_playing, s.sync_enabled)
+                                    };
+
+                                    match spotify_skip(&state_clone, is_next, device_id.clone()).await {
+                                        Ok(_) => println!("[STILLSOUND] Skip command succeeded"),
+                                        Err(e) => println!("[STILLSOUND] Skip command failed: {}", e),
+                                    }
+
+                                    // Edge case: skip while YouTube is playing — new track auto-plays,
+                                    // so pause it to keep sync consistent
+                                    if yt_playing && sync_enabled {
+                                        tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+                                        println!("[STILLSOUND] YouTube is active — pausing skipped track (sync)");
+                                        let _ = spotify_control(&state_clone, false, device_id).await;
+                                        let mut s = state_clone.lock().unwrap();
+                                        s.app_paused_spotify = true;
+                                    }
+
+                                    tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+                                    let info = get_spotify_track_info(&state_clone).await;
+                                    if let Ok(json) = serde_json::to_string(&info) {
+                                        let _ = write.send(tokio_tungstenite::tungstenite::Message::Text(json)).await;
+                                    }
+                                }
+                                _ => {
+                                    // video_playing, video_paused, etc. — handle immediately
+                                    handle_extension_event(event_type, Some(bridge_id.clone()), &app_clone, &state_clone).await;
+                                }
+                            }
                         }
                     }
                 }
@@ -475,6 +646,45 @@ async fn spotify_set_volume(state: &Arc<Mutex<AppState>>, volume: u32, device_id
     Err(format!("Volume failed with status: {}", res.status()))
 }
 
+async fn spotify_skip_internal(access_token: &str, next: bool, device_id: Option<String>) -> Result<reqwest::Response, String> {
+    let client = Client::new();
+    let mut url = if next {
+        "https://api.spotify.com/v1/me/player/next".to_string()
+    } else {
+        "https://api.spotify.com/v1/me/player/previous".to_string()
+    };
+
+    if let Some(ref id) = device_id {
+        url = format!("{}?device_id={}", url, id);
+    }
+
+    client.post(&url)
+        .bearer_auth(access_token)
+        .header("Content-Length", "0")
+        .send()
+        .await
+        .map_err(|e| e.to_string())
+}
+
+async fn spotify_skip(state: &Arc<Mutex<AppState>>, next: bool, device_id: Option<String>) -> Result<(), String> {
+    let token = state.lock().unwrap().access_token.clone().ok_or("No token")?;
+    
+    let res = spotify_skip_internal(&token, next, device_id.clone()).await?;
+    
+    if res.status() == reqwest::StatusCode::UNAUTHORIZED {
+        if let Ok(new_at) = spotify_refresh_token(state).await {
+            let res = spotify_skip_internal(&new_at, next, device_id).await?;
+            if res.status().is_success() {
+                return Ok(());
+            }
+        }
+    } else if res.status().is_success() {
+        return Ok(());
+    }
+
+    Err(format!("Skip failed with status: {}", res.status()))
+}
+
 // --- Tauri Commands ---
 
 #[tauri::command]
@@ -485,7 +695,8 @@ fn update_settings(
     vol: u32,
     autostart: bool,
     autostart_minimized: bool,
-    minimize_to_tray: bool
+    minimize_to_tray: bool,
+    enabled_sites: Option<std::collections::HashMap<String, bool>>
 ) -> Result<(), String> {
     use tauri_plugin_autostart::ManagerExt;
     
@@ -506,7 +717,15 @@ fn update_settings(
     s.autostart = autostart;
     s.autostart_minimized = autostart_minimized;
     s.minimize_to_tray = minimize_to_tray;
+    
+    if let Some(sites) = enabled_sites {
+        s.enabled_sites = sites;
+    }
+    
     s.save();
+    
+    // To be safe, let's just let it be. The extension can request it or we just wait for reconnect.
+
     Ok(())
 }
 
@@ -597,6 +816,36 @@ async fn get_spotify_volume(state: tauri::State<'_, StateWrapper>) -> Result<u32
 #[tauri::command]
 fn get_app_version() -> String {
     env!("CARGO_PKG_VERSION").to_string()
+}
+
+#[tauri::command]
+async fn get_track_info(state: tauri::State<'_, StateWrapper>) -> Result<serde_json::Value, String> {
+    let info = get_spotify_track_info(&state.0).await;
+    Ok(info)
+}
+
+#[tauri::command]
+async fn spotify_play_pause(state: tauri::State<'_, StateWrapper>) -> Result<(), String> {
+    let device_id = {
+        let s = state.0.lock().unwrap();
+        s.current_device_id.clone()
+    };
+    
+    if let Some(playback) = spotify_get_playback_state(&state.0).await {
+        let playing = playback["is_playing"].as_bool().unwrap_or(false);
+        spotify_control(&state.0, !playing, device_id).await
+    } else {
+        Err("Could not get playback state".to_string())
+    }
+}
+
+#[tauri::command]
+async fn spotify_skip_track(state: tauri::State<'_, StateWrapper>, next: bool) -> Result<(), String> {
+    let device_id = {
+        let s = state.0.lock().unwrap();
+        s.current_device_id.clone()
+    };
+    spotify_skip(&state.0, next, device_id).await
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -718,7 +967,10 @@ pub fn run() {
             get_initial_state,
             get_spotify_volume,
             get_app_version,
-            open_url
+            open_url,
+            get_track_info,
+            spotify_play_pause,
+            spotify_skip_track
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

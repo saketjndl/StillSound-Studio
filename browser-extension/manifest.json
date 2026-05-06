@@ -1,8 +1,8 @@
 {
     "manifest_version": 3,
     "name": "StillSound Sync",
-    "version": "1.2.0",
-    "description": "Auto-sync Spotify with YouTube",
+    "version": "2.0.0",
+    "description": "Auto-sync Spotify with video sites",
     "permissions": [
         "tabs",
         "activeTab",
@@ -10,11 +10,32 @@
     ],
     "host_permissions": [
         "*://*.youtube.com/*",
+        "*://*.netflix.com/*",
+        "*://*.primevideo.com/*",
+        "*://*.hotstar.com/*",
+        "*://*.disneyplus.com/*",
+        "*://*.twitch.tv/*",
+        "*://*.crunchyroll.com/*",
+        "*://*.vimeo.com/*",
+        "*://*.jiocinema.com/*",
+        "*://*.twitter.com/*",
+        "*://*.x.com/*",
+        "*://*.reddit.com/*",
+        "*://*.instagram.com/*",
+        "*://*.facebook.com/*",
+        "*://*.udemy.com/*",
+        "*://*.coursera.org/*",
+        "*://*.khanacademy.org/*",
+        "*://*.nptel.ac.in/*",
+        "*://nptel.ac.in/*",
+        "*://meet.google.com/*",
+        "*://*.zoom.us/*",
+        "*://teams.microsoft.com/*",
         "*://127.0.0.1/*",
         "*://localhost/*"
     ],
     "content_security_policy": {
-        "extension_pages": "script-src 'self'; object-src 'self'; connect-src 'self' ws://127.0.0.1:9876 ws://localhost:9876"
+        "extension_pages": "script-src 'self'; object-src 'self'; connect-src 'self' ws://127.0.0.1:9876 ws://localhost:9876; img-src 'self' https://*.scdn.co https://*.spotifycdn.com"
     },
     "background": {
         "scripts": ["background.js"],
@@ -23,7 +44,28 @@
     "content_scripts": [
         {
             "matches": [
-                "*://*.youtube.com/*"
+                "*://*.youtube.com/*",
+                "*://*.netflix.com/*",
+                "*://*.primevideo.com/*",
+                "*://*.hotstar.com/*",
+                "*://*.disneyplus.com/*",
+                "*://*.twitch.tv/*",
+                "*://*.crunchyroll.com/*",
+                "*://*.vimeo.com/*",
+                "*://*.jiocinema.com/*",
+                "*://*.twitter.com/*",
+                "*://*.x.com/*",
+                "*://*.reddit.com/*",
+                "*://*.instagram.com/*",
+                "*://*.facebook.com/*",
+                "*://*.udemy.com/*",
+                "*://*.coursera.org/*",
+                "*://*.khanacademy.org/*",
+                "*://*.nptel.ac.in/*",
+                "*://nptel.ac.in/*",
+                "*://meet.google.com/*",
+                "*://*.zoom.us/*",
+                "*://teams.microsoft.com/*"
             ],
             "js": [
                 "content.js"
