@@ -22,3 +22,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# miscelleneous files
+snapshot_script.py
+PROJECT_SNAPSHOT.md
