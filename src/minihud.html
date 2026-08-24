@@ -1,0 +1,654 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>StillSound HUD</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: rgba(16, 16, 20, 0.95);
+            --border: rgba(255, 255, 255, 0.12);
+            --text: #ffffff;
+            --dim: rgba(255, 255, 255, 0.65);
+            --faint: rgba(255, 255, 255, 0.35);
+            --orange: #ff4c00;
+            --duck-yellow: #ffaa00;
+            --green: #2fcc6b;
+            --font: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            --mono: 'JetBrains Mono', monospace;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        html, body {
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+            background: transparent !important;
+            font-family: var(--font);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: none;
+            outline: none;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        /* --- Capsule Container --- */
+        .capsule {
+            width: 350px;
+            height: 54px;
+            background: var(--bg);
+            backdrop-filter: blur(28px) saturate(2.0);
+            -webkit-backdrop-filter: blur(28px) saturate(2.0);
+            border: 1px solid var(--border);
+            border-radius: 9999px;
+            padding: 5px 12px 5px 8px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            position: relative;
+            cursor: default;
+            transition: border-color 0.25s ease, background 0.25s ease, opacity 0.4s ease, transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .capsule.unlocked {
+            cursor: move;
+            border-color: rgba(255, 255, 255, 0.25);
+        }
+
+        .capsule.ducked {
+            border-color: rgba(255, 170, 0, 0.55);
+            background: linear-gradient(135deg, rgba(28, 20, 10, 0.98) 0%, rgba(42, 30, 12, 0.98) 100%);
+        }
+
+        .capsule.paused {
+            border-color: rgba(255, 76, 0, 0.5);
+            background: linear-gradient(135deg, rgba(32, 16, 12, 0.98) 0%, rgba(46, 20, 14, 0.98) 100%);
+        }
+
+        /* Auto-Hide: Completely slide up off screen */
+        .capsule.auto-hidden {
+            transform: translateY(-160%);
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        /* Translucent / Dim state when Auto-Hide is OFF and idle */
+        .capsule.dimmed {
+            opacity: 0.32;
+        }
+
+        .capsule.dimmed:hover {
+            opacity: 1;
+        }
+
+        /* Reveal strip when auto-hidden */
+        .reveal-strip {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 12px;
+            z-index: 999;
+            display: none;
+        }
+
+        .capsule.auto-hidden ~ .reveal-strip {
+            display: block;
+        }
+
+        /* Vinyl Spinning Album Art Avatar */
+        .art-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            overflow: hidden;
+            background: #202026;
+            flex-shrink: 0;
+            position: relative;
+            pointer-events: none;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .art-img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            opacity: 0;
+            border-radius: 50%;
+            transition: opacity 0.3s ease;
+            pointer-events: none;
+            display: block;
+        }
+
+        .art-img.loaded {
+            opacity: 1;
+        }
+
+        /* Vinyl spin animation */
+        @keyframes vinyl-spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+
+        .capsule.is-playing .art-img.loaded {
+            animation: vinyl-spin 9s linear infinite;
+        }
+
+        .capsule:not(.is-playing) .art-img.loaded {
+            animation: vinyl-spin 9s linear infinite;
+            animation-play-state: paused;
+        }
+
+        .art-placeholder {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            pointer-events: none;
+            background: #1a1a20;
+        }
+
+        .art-img.loaded + .art-placeholder {
+            display: none !important;
+        }
+
+        .art-placeholder svg {
+            width: 18px;
+            height: 18px;
+            stroke: rgba(255, 255, 255, 0.35);
+        }
+
+        /* Center Track Info */
+        .track-meta {
+            flex: 1;
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            gap: 2px;
+            pointer-events: none;
+        }
+
+        .title-row {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            pointer-events: none;
+        }
+
+        .track-title {
+            font-size: 13px;
+            font-weight: 600;
+            color: #ffffff;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            line-height: 1.2;
+            pointer-events: none;
+        }
+
+        .track-sub {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 11px;
+            color: var(--dim);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            line-height: 1.2;
+            pointer-events: none;
+        }
+
+        .status-badge {
+            font-family: var(--mono);
+            font-size: 8.5px;
+            font-weight: 700;
+            padding: 1px 5px;
+            border-radius: 4px;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            display: none;
+        }
+
+        .status-badge.ducked {
+            background: rgba(255, 170, 0, 0.25);
+            color: #ffaa00;
+            border: 1px solid rgba(255, 170, 0, 0.4);
+            display: inline-block;
+        }
+
+        .status-badge.paused {
+            background: rgba(255, 76, 0, 0.25);
+            color: #ff5e1a;
+            border: 1px solid rgba(255, 76, 0, 0.4);
+            display: inline-block;
+        }
+
+        .status-badge.mic {
+            background: rgba(47, 204, 107, 0.25);
+            color: #2fcc6b;
+            border: 1px solid rgba(47, 204, 107, 0.4);
+            display: inline-block;
+        }
+
+        /* Controls */
+        .controls {
+            display: flex;
+            align-items: center;
+            gap: 3px;
+            flex-shrink: 0;
+        }
+
+        .ctrl-btn {
+            background: none;
+            border: none;
+            color: var(--dim);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            transition: all 0.15s ease;
+        }
+
+        .ctrl-btn:hover {
+            color: #ffffff;
+            background: rgba(255, 255, 255, 0.14);
+        }
+
+        .ctrl-btn:active {
+            opacity: 0.85;
+        }
+
+        .ctrl-btn.play-pause {
+            width: 30px;
+            height: 30px;
+            background: rgba(255, 255, 255, 0.12);
+            color: #ffffff;
+        }
+
+        .ctrl-btn.play-pause:hover {
+            background: var(--orange);
+            color: #ffffff;
+        }
+
+        .ctrl-btn svg {
+            width: 14px;
+            height: 14px;
+            fill: currentColor;
+            pointer-events: none;
+        }
+
+        /* Utility buttons (pin, auto-hide, close) */
+        .util-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 22px;
+            height: 22px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.06);
+            border: none;
+            color: var(--faint);
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+
+        .util-btn:hover {
+            background: rgba(255, 255, 255, 0.16);
+            color: #ffffff;
+        }
+
+        .util-btn.active {
+            color: var(--orange);
+            background: rgba(255, 76, 0, 0.18);
+        }
+
+        .util-btn.close:hover {
+            background: #d92d20;
+            color: #ffffff;
+        }
+
+        .util-btn svg {
+            width: 12px;
+            height: 12px;
+            fill: currentColor;
+            pointer-events: none;
+        }
+
+        .util-group {
+            display: flex;
+            gap: 3px;
+            align-items: center;
+            margin-left: 3px;
+        }
+    </style>
+</head>
+<body>
+    <div class="capsule" id="capsule">
+        <div class="art-avatar">
+            <img class="art-img" id="art-img" src="" alt="" />
+            <div class="art-placeholder" id="art-placeholder">
+                <svg viewBox="0 0 24 24" fill="none" stroke-width="1.8">
+                    <path d="M9 18V5l12-2v13" />
+                    <circle cx="6" cy="18" r="3" />
+                    <circle cx="18" cy="16" r="3" />
+                </svg>
+            </div>
+        </div>
+
+        <div class="track-meta">
+            <div class="title-row">
+                <div class="track-title" id="track-title">Loading...</div>
+            </div>
+            <div class="track-sub">
+                <span id="track-sub-text">Ready</span>
+                <span class="status-badge" id="status-badge"></span>
+            </div>
+        </div>
+
+        <div class="controls">
+            <button class="ctrl-btn" id="btn-prev" title="Previous">
+                <svg viewBox="0 0 24 24"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg>
+            </button>
+            <button class="ctrl-btn play-pause" id="btn-play-pause" title="Play/Pause">
+                <svg viewBox="0 0 24 24" id="icon-play"><path d="M8 5v14l11-7z"/></svg>
+                <svg viewBox="0 0 24 24" id="icon-pause" style="display:none"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
+            </button>
+            <button class="ctrl-btn" id="btn-next" title="Next">
+                <svg viewBox="0 0 24 24"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>
+            </button>
+
+            <div class="util-group">
+                <!-- Pin in Place toggle -->
+                <button class="util-btn active" id="btn-pin" title="Pinned in Place (Click to unlock & drag)">
+                    <!-- Pinned pushpin icon -->
+                    <svg viewBox="0 0 24 24" id="icon-pinned">
+                        <path d="M16 12V4h1V2H7v2h1v8l-2 2v2h5v6l1 1 1-1v-6h5v-2l-2-2z"/>
+                    </svg>
+                    <!-- Unpinned pushpin icon -->
+                    <svg viewBox="0 0 24 24" id="icon-unpinned" style="display:none;">
+                        <path d="M14 4h1V2H9v2h1v7.17l-1.41 1.42L7.17 14H5v2h5v6l1 1 1-1v-6h5v-2h-2.17l-1.42-1.41L14 11.17V4z"/>
+                    </svg>
+                </button>
+                <!-- Auto-Hide toggle -->
+                <button class="util-btn" id="btn-autohide" title="Auto-Hide when idle">
+                    <svg viewBox="0 0 24 24"><path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/></svg>
+                </button>
+                <!-- Close/Hide HUD -->
+                <button class="util-btn close" id="btn-close" title="Hide HUD">
+                    <svg viewBox="0 0 24 24"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div class="reveal-strip" id="reveal-strip"></div>
+
+    <script type="module">
+        const invoke = window.__TAURI__?.core?.invoke;
+        const listen = window.__TAURI__?.event?.listen;
+        const appWindow = window.__TAURI__?.window?.getCurrentWindow?.();
+
+        const capsule = document.getElementById('capsule');
+        const artImg = document.getElementById('art-img');
+        const trackTitle = document.getElementById('track-title');
+        const trackSubText = document.getElementById('track-sub-text');
+        const statusBadge = document.getElementById('status-badge');
+        const iconPlay = document.getElementById('icon-play');
+        const iconPause = document.getElementById('icon-pause');
+        const btnPlayPause = document.getElementById('btn-play-pause');
+        const btnPrev = document.getElementById('btn-prev');
+        const btnNext = document.getElementById('btn-next');
+        const btnPin = document.getElementById('btn-pin');
+        const iconPinned = document.getElementById('icon-pinned');
+        const iconUnpinned = document.getElementById('icon-unpinned');
+        const btnAutoHide = document.getElementById('btn-autohide');
+        const btnClose = document.getElementById('btn-close');
+        const revealStrip = document.getElementById('reveal-strip');
+
+        let isPlaying = false;
+        let isPinned = true; // Default: pinned in place
+        let autoHideEnabled = false;
+        let idleTimer = null;
+        let isAutoHidden = false;
+        let isHovered = false;
+
+        // --- Dragging Support (Only when unpinned!) ---
+        capsule.addEventListener('mousedown', async (e) => {
+            if (e.target.closest('button') || e.target.closest('.controls')) return;
+            
+            // When pinned in place, ignore dragging
+            if (isPinned) return;
+
+            if (invoke) {
+                try {
+                    await invoke('drag_mini_hud');
+                } catch (err) {
+                    if (appWindow && typeof appWindow.startDragging === 'function') {
+                        appWindow.startDragging().catch(() => {});
+                    }
+                }
+            } else if (appWindow && typeof appWindow.startDragging === 'function') {
+                appWindow.startDragging().catch(() => {});
+            }
+        });
+
+        // Save position on mouseup
+        window.addEventListener('mouseup', async () => {
+            if (!isPinned && appWindow && typeof appWindow.outerPosition === 'function' && invoke) {
+                try {
+                    const pos = await appWindow.outerPosition();
+                    invoke('save_hud_pos', { x: pos.x, y: pos.y }).catch(() => {});
+                } catch (e) {}
+            }
+        });
+
+        // --- Pin in Place Toggle ---
+        btnPin.addEventListener('click', (e) => {
+            e.stopPropagation();
+            isPinned = !isPinned;
+            btnPin.classList.toggle('active', isPinned);
+            capsule.classList.toggle('unlocked', !isPinned);
+
+            if (isPinned) {
+                iconPinned.style.display = 'block';
+                iconUnpinned.style.display = 'none';
+                btnPin.title = 'Pinned in Place (Click to unlock & drag)';
+            } else {
+                iconPinned.style.display = 'none';
+                iconUnpinned.style.display = 'block';
+                btnPin.title = 'Unlocked (Click & drag to reposition)';
+            }
+        });
+
+        // --- Auto-Hide Toggle ---
+        btnAutoHide.addEventListener('click', (e) => {
+            e.stopPropagation();
+            autoHideEnabled = !autoHideEnabled;
+            btnAutoHide.classList.toggle('active', autoHideEnabled);
+            btnAutoHide.title = autoHideEnabled ? 'Auto-Hide ON' : 'Auto-Hide OFF (Translucent when idle)';
+
+            resetIdleState();
+        });
+
+        function resetIdleState() {
+            clearTimeout(idleTimer);
+            capsule.classList.remove('dimmed', 'auto-hidden');
+            isAutoHidden = false;
+
+            if (!isHovered) {
+                idleTimer = setTimeout(() => {
+                    if (!isHovered) {
+                        if (autoHideEnabled) {
+                            // Completely slide off screen
+                            isAutoHidden = true;
+                            capsule.classList.add('auto-hidden');
+                        } else {
+                            // Make translucent / semi-transparent
+                            capsule.classList.add('dimmed');
+                        }
+                    }
+                }, 3500);
+            }
+        }
+
+        // Hover reveal strip when auto-hidden
+        revealStrip.addEventListener('mouseenter', () => {
+            if (isAutoHidden) {
+                isAutoHidden = false;
+                capsule.classList.remove('auto-hidden');
+            }
+        });
+
+        capsule.addEventListener('mouseenter', () => {
+            isHovered = true;
+            clearTimeout(idleTimer);
+            capsule.classList.remove('dimmed', 'auto-hidden');
+            isAutoHidden = false;
+        });
+
+        capsule.addEventListener('mouseleave', () => {
+            isHovered = false;
+            resetIdleState();
+        });
+
+        // --- Close ---
+        btnClose.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (invoke) {
+                invoke('toggle_mini_hud', { show: false }).catch(console.error);
+            }
+        });
+
+        // --- Media Controls ---
+        btnPlayPause.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            isPlaying = !isPlaying;
+            setPlayState(isPlaying);
+            if (invoke) {
+                await invoke('spotify_play_pause', { play: isPlaying }).catch(console.error);
+            }
+        });
+
+        btnPrev.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            if (invoke) {
+                await invoke('spotify_skip_track', { next: false }).catch(console.error);
+            }
+        });
+
+        btnNext.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            if (invoke) {
+                await invoke('spotify_skip_track', { next: true }).catch(console.error);
+            }
+        });
+
+        function setPlayState(playing) {
+            const stateChanged = (isPlaying !== playing);
+            isPlaying = playing;
+            if (playing) {
+                iconPlay.style.display = 'none';
+                iconPause.style.display = 'block';
+                capsule.classList.add('is-playing');
+            } else {
+                iconPlay.style.display = 'block';
+                iconPause.style.display = 'none';
+                capsule.classList.remove('is-playing');
+            }
+
+            // Only restart idle countdown when play state actually transitions
+            if (stateChanged) {
+                resetIdleState();
+            }
+        }
+
+        // --- Real-Time HUD State Sync ---
+        function applyTrackData(data) {
+            if (!data) return;
+
+            if (data.track_name && data.track_name.length > 0) {
+                trackTitle.textContent = data.track_name;
+                
+                let sub = data.artist_name || '';
+                if (data.album_name && data.album_name !== data.track_name) {
+                    sub += sub ? ' · ' + data.album_name : data.album_name;
+                }
+                trackSubText.textContent = sub || 'Playing';
+
+                if (data.album_art && artImg.src !== data.album_art) {
+                    artImg.src = data.album_art;
+                    artImg.onload = () => artImg.classList.add('loaded');
+                } else if (!data.album_art) {
+                    artImg.classList.remove('loaded');
+                }
+            } else {
+                trackTitle.textContent = 'No Media Active';
+                trackSubText.textContent = 'Play music on Spotify or PC';
+                artImg.classList.remove('loaded');
+            }
+
+            setPlayState(!!data.is_playing);
+
+            // Capsule status & styling
+            capsule.classList.remove('ducked', 'paused');
+            statusBadge.className = 'status-badge';
+
+            if (data.is_ducked) {
+                capsule.classList.add('ducked');
+                statusBadge.className = 'status-badge ducked';
+                statusBadge.textContent = `Ducked ${data.ducking_level || 20}%`;
+                trackSubText.textContent = 'Feed Active';
+            } else if (data.yt_playing || data.app_paused_spotify) {
+                capsule.classList.add('paused');
+                statusBadge.className = 'status-badge paused';
+                statusBadge.textContent = 'Auto-Paused';
+                trackSubText.textContent = 'Watching Video';
+            } else if (data.mic_active) {
+                statusBadge.className = 'status-badge mic';
+                statusBadge.textContent = 'Mic Active';
+                trackSubText.textContent = 'In Meeting';
+            }
+        }
+
+        async function fetchTrackInfo() {
+            if (invoke) {
+                try {
+                    const data = await invoke('get_track_info');
+                    applyTrackData(data);
+                } catch (e) {
+                    console.warn('fetchTrackInfo err:', e);
+                }
+            }
+        }
+
+        // Fetch immediately on load & poll every 1.5s
+        fetchTrackInfo();
+        resetIdleState();
+        setInterval(fetchTrackInfo, 1500);
+
+        if (listen) {
+            listen('hud_update', (event) => {
+                applyTrackData(event.payload);
+            });
+        }
+    </script>
+</body>
+</html>

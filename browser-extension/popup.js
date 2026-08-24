@@ -9,15 +9,15 @@ const artPlaceholder = document.getElementById('art-placeholder');
 const trackName = document.getElementById('track-name');
 const trackArtist = document.getElementById('track-artist');
 const waveform = document.getElementById('waveform');
-const appDot = document.getElementById('app-dot');
 const appPill = document.getElementById('app-pill');
-const ytDot = document.getElementById('yt-dot');
 const ytPill = document.getElementById('yt-pill');
 const btnPrev = document.getElementById('btn-prev');
 const btnPlayPause = document.getElementById('btn-play-pause');
 const iconPlay = document.getElementById('icon-play');
 const iconPause = document.getElementById('icon-pause');
 const btnNext = document.getElementById('btn-next');
+const onboardingBanner = document.getElementById('onboarding-banner');
+const controls = document.getElementById('controls');
 
 let lastTrackName = '';
 let isSpotifyPlaying = false;
@@ -96,31 +96,61 @@ function updateUI(res) {
     // --- Connection status ---
     if (res.connected) {
         island.classList.add('connected');
-        appDot.classList.add('green');
         appPill.textContent = 'connected';
         appPill.className = 'status-pill ok';
+        if (onboardingBanner) onboardingBanner.style.display = 'none';
+        if (musicSection) musicSection.style.display = 'flex';
+        if (controls) controls.style.display = 'flex';
     } else {
         island.classList.remove('connected');
-        appDot.classList.remove('green', 'orange');
-        appPill.textContent = 'offline';
+        appPill.textContent = 'disconnected';
         appPill.className = 'status-pill off';
+        if (onboardingBanner) onboardingBanner.style.display = 'flex';
+        if (musicSection) musicSection.style.display = 'none';
+        if (controls) controls.style.display = 'none';
     }
 
-    // --- YouTube status ---
+    // --- YouTube / Video status ---
     if (res.ytPlaying) {
-        ytDot.classList.add('orange');
-        ytDot.classList.remove('green');
-        ytPill.textContent = 'playing';
+        ytPill.textContent = 'pausing music';
         ytPill.className = 'status-pill active';
+        ytPill.style.background = '';
+    } else if (res.isDucked || res.spotify?.is_ducked) {
+        ytPill.textContent = `ducking (${res.spotify?.ducking_level || 20}%)`;
+        ytPill.className = 'status-pill active';
+        ytPill.style.background = '#ffaa00';
     } else if (res.ytDetected) {
-        ytDot.classList.remove('orange');
-        ytDot.classList.add('green');
-        ytPill.textContent = 'paused';
-        ytPill.className = 'status-pill off';
+        ytPill.textContent = 'ready (video paused)';
+        ytPill.className = 'status-pill ok';
+        ytPill.style.background = '';
     } else {
-        ytDot.classList.remove('orange', 'green');
-        ytPill.textContent = 'idle';
+        ytPill.textContent = 'monitoring videos';
         ytPill.className = 'status-pill off';
+        ytPill.style.background = '';
+    }
+
+    // --- Active Tab Site Action Display ---
+    if (typeof chrome !== 'undefined' && chrome.tabs && chrome.tabs.query) {
+        chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+            if (tabs && tabs[0] && tabs[0].url) {
+                try {
+                    const url = new URL(tabs[0].url);
+                    const hostname = url.hostname.replace(/^www\./, '');
+                    const siteRow = document.getElementById('site-action-row');
+                    const siteLabel = document.getElementById('current-site-label');
+                    const sitePill = document.getElementById('site-action-pill');
+                    if (siteRow && hostname && !hostname.startsWith('chrome') && !hostname.startsWith('brave')) {
+                        siteRow.style.display = 'flex';
+                        siteLabel.textContent = hostname;
+                        const action = (['twitter.com', 'x.com', 'reddit.com', 'instagram.com', 'facebook.com', 'tiktok.com'].some(d => hostname.includes(d))) ? 'duck' : 'pause';
+                        sitePill.textContent = action.toUpperCase();
+                        sitePill.className = action === 'duck' ? 'status-pill active' : 'status-pill ok';
+                        if (action === 'duck') sitePill.style.background = '#ffaa00';
+                        else sitePill.style.background = '';
+                    }
+                } catch (e) {}
+            }
+        });
     }
 
     // --- Spotify track info ---
@@ -136,10 +166,12 @@ function updateUI(res) {
                 sub += sub ? ' · ' + s.album_name : s.album_name;
             }
             
-            if (res.ytPlaying) {
-                trackArtist.textContent = sub ? `${sub} (Auto-paused by video)` : 'Auto-paused by video';
+            if (res.isDucked || s.is_ducked) {
+                trackArtist.textContent = sub ? `${sub} • Ducked (${s.ducking_level || 20}%) for Feed Video` : 'Ducked for Feed Video';
+            } else if (res.ytPlaying) {
+                trackArtist.textContent = sub ? `${sub} • Paused while watching video` : 'Paused while watching video';
             } else if (!s.is_playing && res.ytDetected) {
-                trackArtist.textContent = sub ? `${sub} (Video paused)` : 'Video paused';
+                trackArtist.textContent = sub ? `${sub} • Paused` : 'Paused';
             } else if (s.device_name) {
                 if (s.is_playing) {
                     trackArtist.textContent = sub ? `${sub} • Playing on ${s.device_name}` : `Playing on ${s.device_name}`;
@@ -150,15 +182,13 @@ function updateUI(res) {
                 trackArtist.textContent = sub || 'Unknown';
             }
 
-            // Album art
-            if (s.album_art) {
+            // Album art — ensure loaded class is added immediately for data URIs and cached images
+            if (s.album_art && s.album_art.length > 0) {
                 if (albumArt.src !== s.album_art) {
-                    albumArt.onload = () => {
-                        albumArt.classList.add('loaded');
-                    };
                     albumArt.src = s.album_art;
                     ambientBg.src = s.album_art;
                 }
+                albumArt.classList.add('loaded');
             } else {
                 albumArt.classList.remove('loaded');
                 albumArt.src = '';
@@ -193,8 +223,8 @@ function updateUI(res) {
             lastTrackName = s.track_name;
         } else {
             // No track info
-            trackName.textContent = 'Not Playing';
-            trackArtist.textContent = 'Open Spotify to see your music';
+            trackName.textContent = 'No Active Music Session';
+            trackArtist.textContent = 'Play music on Spotify, Apple Music, or VLC';
             albumArt.classList.remove('loaded');
             albumArt.src = '';
             ambientBg.src = '';

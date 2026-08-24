@@ -252,25 +252,6 @@
       gap: 8px;
     }
 
-    .status-dot {
-      width: 6px;
-      height: 6px;
-      border-radius: 50%;
-      background: #3a3a3c;
-      transition: all 0.4s ease;
-      flex-shrink: 0;
-    }
-
-    .status-dot.green {
-      background: #2fcc6b;
-      box-shadow: 0 0 8px rgba(47, 204, 107, 0.5);
-    }
-
-    .status-dot.orange {
-      background: #ff4c00;
-      box-shadow: 0 0 8px rgba(255, 76, 0, 0.5);
-    }
-
     .status-label {
       font-size: 12px;
       font-weight: 500;
@@ -292,8 +273,8 @@
     }
 
     .status-pill.ok {
-      background: rgba(47, 204, 107, 0.15);
-      color: #2fcc6b;
+      background: rgba(255, 255, 255, 0.12);
+      color: #ffffff;
     }
 
     .status-pill.active {
@@ -398,6 +379,57 @@
       transform: translate(-50%, -50%) scale(1);
     }
 
+    /* === ONBOARDING BANNER (When disconnected) === */
+    .onboarding-banner {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      gap: 10px;
+      padding: 20px 16px;
+      border-radius: 24px;
+      background: #1c1c1e;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      margin-bottom: 10px;
+      animation: islandAppear 0.3s ease;
+    }
+
+    .onboard-icon {
+      font-size: 28px;
+    }
+
+    .onboard-title {
+      font-size: 14px;
+      font-weight: 700;
+      color: #ffffff;
+    }
+
+    .onboard-desc {
+      font-size: 11px;
+      color: rgba(255, 255, 255, 0.6);
+      line-height: 1.4;
+      margin-top: 4px;
+      max-width: 260px;
+    }
+
+    .onboard-btn {
+      margin-top: 6px;
+      display: inline-block;
+      padding: 8px 16px;
+      background: #ff4c00;
+      color: #ffffff;
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 12px;
+      border-radius: 12px;
+      transition: all 0.2s;
+    }
+
+    .onboard-btn:hover {
+      background: #ff5e1a;
+      transform: scale(1.03);
+    }
+
     /* === SCROLLING TEXT FOR LONG NAMES === */
     .track-name.scrolling,
     .track-artist.scrolling {
@@ -419,6 +451,20 @@
   <img id="ambient-bg" class="ambient-bg" src="" alt="" />
   <div class="island" id="island">
 
+    <!-- Disconnected / Onboarding Banner -->
+    <div class="onboarding-banner" id="onboarding-banner" style="display: none;">
+      <div class="onboard-icon">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#ff4c00" stroke-width="2">
+          <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
+          <line x1="8" y1="21" x2="16" y2="21"/>
+          <line x1="12" y1="17" x2="12" y2="21"/>
+        </svg>
+      </div>
+      <div class="onboard-title">StillSound Studio Not Connected</div>
+      <div class="onboard-desc">Please open the StillSound Studio desktop application on your computer to sync your music.</div>
+      <a class="onboard-btn" href="https://github.com/saketjndl/StillSound-Studio/releases" target="_blank">Download Desktop App ↗</a>
+    </div>
+
     <!-- Music Hero Section -->
     <div class="music-section" id="music-section">
       <div class="album-art-wrap">
@@ -432,8 +478,8 @@
         </div>
       </div>
       <div class="track-info">
-        <div class="track-name" id="track-name">Not Playing</div>
-        <div class="track-artist" id="track-artist">Open Spotify to see your music</div>
+        <div class="track-name" id="track-name">No Active Music Session</div>
+        <div class="track-artist" id="track-artist">Play music on Spotify, Apple Music, or VLC</div>
       </div>
       <div class="waveform" id="waveform">
         <span></span><span></span><span></span><span></span><span></span>
@@ -458,17 +504,34 @@
     <div class="status-section">
       <div class="status-row">
         <div class="status-left">
-          <div class="status-dot" id="app-dot"></div>
-          <span class="status-label">App</span>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: rgba(255,255,255,0.4); margin-right: 4px;">
+            <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
+            <line x1="8" y1="21" x2="16" y2="21"/>
+            <line x1="12" y1="17" x2="12" y2="21"/>
+          </svg>
+          <span class="status-label">StillSound Studio</span>
         </div>
         <span class="status-pill off" id="app-pill">connecting</span>
       </div>
       <div class="status-row">
         <div class="status-left">
-          <div class="status-dot" id="yt-dot"></div>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: rgba(255,255,255,0.4); margin-right: 4px;">
+            <polygon points="5 3 19 12 5 21 5 3"/>
+          </svg>
           <span class="status-label">Video Sync</span>
         </div>
-        <span class="status-pill off" id="yt-pill">idle</span>
+        <span class="status-pill off" id="yt-pill">monitoring videos</span>
+      </div>
+      <div class="status-row" id="site-action-row" style="display: none;">
+        <div class="status-left">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: rgba(255,255,255,0.4); margin-right: 4px;">
+            <circle cx="12" cy="12" r="10"/>
+            <line x1="12" y1="8" x2="12" y2="12"/>
+            <line x1="12" y1="16" x2="12.01" y2="16"/>
+          </svg>
+          <span class="status-label" id="current-site-label">Site Action</span>
+        </div>
+        <span class="status-pill ok" id="site-action-pill">Pause</span>
       </div>
     </div>
 

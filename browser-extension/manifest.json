@@ -1,12 +1,13 @@
 {
     "manifest_version": 3,
     "name": "StillSound Sync",
-    "version": "2.0.0",
-    "description": "Auto-sync Spotify with video sites",
+    "version": "3.0.0",
+    "description": "Auto-sync and duck media with video feeds",
     "permissions": [
         "tabs",
         "activeTab",
-        "alarms"
+        "alarms",
+        "scripting"
     ],
     "host_permissions": [
         "*://*.youtube.com/*",
@@ -35,7 +36,7 @@
         "*://localhost/*"
     ],
     "content_security_policy": {
-        "extension_pages": "script-src 'self'; object-src 'self'; connect-src 'self' ws://127.0.0.1:9876 ws://localhost:9876; img-src 'self' https://*.scdn.co https://*.spotifycdn.com"
+        "extension_pages": "script-src 'self'; object-src 'self'; connect-src 'self' ws://127.0.0.1:9876 ws://127.0.0.1:9878 ws://127.0.0.1:9880 ws://127.0.0.1:9882 ws://localhost:9876 ws://localhost:9878 ws://localhost:9880 ws://localhost:9882; img-src 'self' data: blob: https: http:"
     },
     "background": {
         "scripts": ["background.js"],
@@ -70,7 +71,8 @@
             "js": [
                 "content.js"
             ],
-            "run_at": "document_idle"
+            "run_at": "document_idle",
+            "all_frames": true
         }
     ],
     "action": {

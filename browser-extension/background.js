@@ -1,13 +1,26 @@
-// StillSound Background Bridge
+// StillSound Background Bridge v3.0
 const api = (typeof browser !== 'undefined') ? browser : chrome;
-const SERVER_URL = 'ws://127.0.0.1:9876';
+const PORTS = [9876, 9878, 9880, 9882];
+let portIndex = 0;
 let socket = null;
 let reconnectInterval = 3000;
 let isConnected = false;
 
-// Aggregation state
-const tabStates = new Map(); // tabId -> isPlaying
-let aggregatePlaying = false;
+function updateBadge(connected) {
+    try {
+        if (connected) {
+            api.action.setBadgeText({ text: '' });
+        } else {
+            api.action.setBadgeText({ text: 'OFF' });
+            api.action.setBadgeBackgroundColor({ color: '#E53935' });
+        }
+    } catch (e) {}
+}
+updateBadge(false);
+
+// Aggregation state: tabId -> { isPlaying: boolean, hostname: string, action: "pause"|"duck"|"ignore" }
+const tabStates = new Map();
+let aggregateState = 'idle'; // 'pause' | 'duck' | 'idle'
 let debounceTimer = null;
 
 // Spotify track info (received from Tauri app via WebSocket)
@@ -16,27 +29,36 @@ let spotifyInfo = {
     track_name: '',
     artist_name: '',
     album_art: '',
-    album_name: ''
+    album_name: '',
+    is_ducked: false,
+    ducking_level: 20
 };
 let spotifyPollTimer = null;
 
-// Site filtering — default all enabled, overridden by Tauri config
-let enabledSites = {};
+// Site action matrix (configured from Tauri desktop app)
+let siteActions = {};
 
-// Match a hostname against the enabled sites list
-function isSiteEnabled(hostname) {
-    if (!hostname) return true; // legacy messages without hostname
+// Match a hostname against the site action matrix
+function getSiteAction(hostname) {
+    if (!hostname) return 'pause';
     hostname = hostname.replace(/^www\./, '');
+    
     // Exact match
-    if (enabledSites.hasOwnProperty(hostname)) return enabledSites[hostname] !== false;
+    if (siteActions.hasOwnProperty(hostname)) return siteActions[hostname];
+    
     // Try parent domain (e.g. m.youtube.com → youtube.com)
     const parts = hostname.split('.');
     if (parts.length > 2) {
         const parent = parts.slice(1).join('.');
-        if (enabledSites.hasOwnProperty(parent)) return enabledSites[parent] !== false;
+        if (siteActions.hasOwnProperty(parent)) return siteActions[parent];
     }
-    // Unknown site — allow by default (content script only runs on registered sites)
-    return true;
+    
+    // Default fallback based on domain type
+    const socialDomains = ['twitter.com', 'x.com', 'reddit.com', 'instagram.com', 'facebook.com', 'tiktok.com'];
+    if (socialDomains.some(d => hostname.includes(d))) {
+        return 'duck';
+    }
+    return 'pause';
 }
 
 function connect() {
@@ -44,23 +66,29 @@ function connect() {
         return;
     }
 
+    const currentUrl = `ws://127.0.0.1:${PORTS[portIndex]}`;
+
     try {
-        console.log('[StillSound] Attempting connection to', SERVER_URL);
-        socket = new WebSocket(SERVER_URL);
+        console.log('[StillSound] Attempting connection to', currentUrl);
+        socket = new WebSocket(currentUrl);
     } catch (e) {
         console.error('[StillSound] Connection error:', e);
         isConnected = false;
-        setTimeout(connect, reconnectInterval);
+        updateBadge(false);
+        rotatePortAndRetry();
         return;
     }
 
     socket.onopen = () => {
-        console.log('[StillSound] WebSocket connected successfully');
+        console.log('[StillSound] WebSocket connected successfully on port', PORTS[portIndex]);
         isConnected = true;
+        updateBadge(true);
         reconnectInterval = 3000;
-        // Sync current state on connect
-        sendToApp(aggregatePlaying ? 'video_playing' : 'video_paused');
-        // Start polling for spotify info
+        
+        // Sync active state on reconnect if anything is currently playing
+        if (aggregateState !== 'idle') {
+            sendActivePlaybackState();
+        }
         startSpotifyPoll();
     };
 
@@ -73,14 +101,26 @@ function connect() {
                     track_name: data.track_name || '',
                     artist_name: data.artist_name || '',
                     album_art: data.album_art || '',
-                    album_name: data.album_name || ''
+                    album_name: data.album_name || '',
+                    is_ducked: data.is_ducked || false,
+                    ducking_level: data.ducking_level || 20
                 };
             } else if (data.type === 'site_config') {
-                // Receive enabled sites list from Tauri app
-                if (data.sites) {
-                    enabledSites = data.sites;
-                    console.log('[StillSound] Received site config:', Object.keys(enabledSites).length, 'sites');
+                if (data.site_actions) {
+                    siteActions = data.site_actions;
+                    console.log('[StillSound] Received site action matrix:', Object.keys(siteActions).length, 'sites');
+                } else if (data.sites) {
+                    // Legacy backwards compatibility
+                    siteActions = {};
+                    for (const [s, enabled] of Object.entries(data.sites)) {
+                        siteActions[s] = enabled ? 'pause' : 'ignore';
+                    }
                 }
+                // Instantly re-evaluate all currently open tabs with the updated site actions
+                for (const [tabId, tabState] of tabStates.entries()) {
+                    tabState.action = getSiteAction(tabState.hostname);
+                }
+                updateAggregateState();
             }
         } catch (e) {
             console.warn('[StillSound] Failed to parse WS message:', e);
@@ -90,16 +130,23 @@ function connect() {
     socket.onclose = (event) => {
         console.log('[StillSound] WebSocket closed. Code:', event.code, 'Reason:', event.reason);
         isConnected = false;
+        updateBadge(false);
         socket = null;
         stopSpotifyPoll();
-        setTimeout(connect, reconnectInterval);
-        if (reconnectInterval < 15000) reconnectInterval += 2000;
+        rotatePortAndRetry();
     };
 
     socket.onerror = (err) => {
         console.error('[StillSound] WebSocket error occurred:', err);
         isConnected = false;
+        updateBadge(false);
     };
+}
+
+function rotatePortAndRetry() {
+    portIndex = (portIndex + 1) % PORTS.length;
+    setTimeout(connect, reconnectInterval);
+    if (reconnectInterval < 10000) reconnectInterval += 1500;
 }
 
 function startSpotifyPoll() {
@@ -118,27 +165,51 @@ function stopSpotifyPoll() {
     }
 }
 
-function updateAggregateState() {
-    const isAnyPlaying = Array.from(tabStates.values()).some(p => p === true);
+function sendActivePlaybackState() {
+    // Determine highest priority active action: 'pause' > 'duck'
+    const activeTabs = Array.from(tabStates.values()).filter(t => t.isPlaying);
+    const hasPause = activeTabs.some(t => t.action === 'pause');
+    const hasDuck = activeTabs.some(t => t.action === 'duck');
 
-    if (isAnyPlaying !== aggregatePlaying) {
-        if (isAnyPlaying) {
-            clearTimeout(debounceTimer);
-            aggregatePlaying = true;
-            sendToApp('video_playing');
+    if (hasPause) {
+        const pauseTab = activeTabs.find(t => t.action === 'pause');
+        sendToApp({ type: 'video_playing', hostname: pauseTab?.hostname || '', action: 'pause' });
+    } else if (hasDuck) {
+        const duckTab = activeTabs.find(t => t.action === 'duck');
+        sendToApp({ type: 'video_playing', hostname: duckTab?.hostname || '', action: 'duck' });
+    }
+}
+
+function updateAggregateState() {
+    const activeTabs = Array.from(tabStates.values()).filter(t => t.isPlaying);
+    const hasPause = activeTabs.some(t => t.action === 'pause');
+    const hasDuck = activeTabs.some(t => t.action === 'duck');
+
+    let newAggregateState = 'idle';
+    if (hasPause) {
+        newAggregateState = 'pause';
+    } else if (hasDuck) {
+        newAggregateState = 'duck';
+    }
+
+    if (newAggregateState !== aggregateState) {
+        clearTimeout(debounceTimer);
+        if (newAggregateState !== 'idle') {
+            aggregateState = newAggregateState;
+            sendActivePlaybackState();
         } else {
-            clearTimeout(debounceTimer);
+            // Debounce pause transition to prevent stuttering across consecutive videos or ads
             debounceTimer = setTimeout(() => {
-                aggregatePlaying = false;
-                sendToApp('video_paused');
-            }, 1000);
+                aggregateState = 'idle';
+                sendToApp({ type: 'video_paused' });
+            }, 800);
         }
     }
 }
 
-function sendToApp(type) {
+function sendToApp(payload) {
     if (socket && socket.readyState === WebSocket.OPEN) {
-        socket.send(JSON.stringify({ type }));
+        socket.send(JSON.stringify(payload));
     }
 }
 
@@ -168,7 +239,8 @@ api.runtime.onMessage.addListener((message, sender, sendResponse) => {
         }
         sendResponse({
             connected: isConnected,
-            ytPlaying: aggregatePlaying,
+            ytPlaying: aggregateState === 'pause',
+            isDucked: aggregateState === 'duck',
             ytDetected: tabStates.size > 0,
             spotify: spotifyInfo
         });
@@ -183,7 +255,7 @@ api.runtime.onMessage.addListener((message, sender, sendResponse) => {
         return;
     }
 
-    // Spotify control commands from popup
+    // Controls from popup
     if (['spotify_play', 'spotify_pause', 'spotify_next', 'spotify_prev'].includes(message.type)) {
         if (socket && socket.readyState === WebSocket.OPEN) {
             socket.send(JSON.stringify({ type: message.type }));
@@ -194,19 +266,50 @@ api.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
     if (!sender.tab) return;
     const tabId = sender.tab.id;
+    const hostname = message.hostname || '';
+    const action = getSiteAction(hostname);
+
+    if (action === 'ignore') {
+        if (tabStates.has(tabId)) {
+            tabStates.delete(tabId);
+            updateAggregateState();
+        }
+        return;
+    }
 
     if (message.type === 'video_playing') {
-        // Check if site is enabled before tracking
-        if (!isSiteEnabled(message.hostname)) {
-            console.log('[StillSound] Site disabled, ignoring:', message.hostname);
-            return;
-        }
-        tabStates.set(tabId, true);
+        tabStates.set(tabId, { isPlaying: true, hostname, action });
         updateAggregateState();
     } else if (message.type === 'video_paused') {
-        if (!isSiteEnabled(message.hostname)) return;
-        tabStates.set(tabId, false);
-        updateAggregateState();
+        if (tabStates.has(tabId)) {
+            tabStates.set(tabId, { isPlaying: false, hostname, action });
+            updateAggregateState();
+        }
+    }
+});
+
+// Automatically re-inject content script into open tabs when extension is installed/reloaded
+api.runtime.onInstalled?.addListener(() => {
+    const MATCH_PATTERNS = [
+        "*://*.youtube.com/*", "*://*.netflix.com/*", "*://*.primevideo.com/*",
+        "*://*.hotstar.com/*", "*://*.disneyplus.com/*", "*://*.twitch.tv/*",
+        "*://*.crunchyroll.com/*", "*://*.vimeo.com/*", "*://*.jiocinema.com/*",
+        "*://*.twitter.com/*", "*://*.x.com/*", "*://*.reddit.com/*",
+        "*://*.instagram.com/*", "*://*.facebook.com/*", "*://*.tiktok.com/*",
+        "*://*.udemy.com/*", "*://*.coursera.org/*", "*://*.khanacademy.org/*",
+        "*://*.nptel.ac.in/*", "*://nptel.ac.in/*", "*://meet.google.com/*",
+        "*://*.zoom.us/*", "*://teams.microsoft.com/*"
+    ];
+    if (api.tabs && api.scripting) {
+        api.tabs.query({ url: MATCH_PATTERNS }, (tabs) => {
+            if (!tabs) return;
+            tabs.forEach(tab => {
+                api.scripting.executeScript({
+                    target: { tabId: tab.id },
+                    files: ['content.js']
+                }).catch(() => {});
+            });
+        });
     }
 });
 
