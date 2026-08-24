@@ -58,7 +58,8 @@ No more manual alt-tabbing, fumbling for media keys during lectures, or losing y
 ## 🎥 Demo
 
 <div align="center">
-  <img src="media/demo.gif" alt="StillSound Demo" width="100%">
+  <img width="640" height="360" alt="StillSound Studio Demo - Ambient Music Sync, Audio Ducking & Mini-HUD in Action" src="https://github.com/user-attachments/assets/f58e30df-3ce4-42ff-882b-c5aef4798e38" />
+  <p><em>(If the preview above does not load, <a href="https://github.com/user-attachments/assets/f58e30df-3ce4-42ff-882b-c5aef4798e38" target="_blank">click here to watch the full demo</a>)</em></p>
 </div>
 
 ---
