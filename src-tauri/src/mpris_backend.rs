@@ -58,8 +58,8 @@ impl MprisBackend {
 
     pub fn seek_backward(&self, seconds: u32) -> Result<(), String> {
         let player = self.get_player()?;
-        let offset = (seconds as i64) * 1_000_000; // microseconds for MPRIS
-        let _ = player.seek_forwards(-offset);
+        let offset_us = (seconds as u64) * 1_000_000; // microseconds
+        player.seek_backwards(offset_us).map_err(|e| e.to_string())?;
         println!("[MPRIS] Smart Rewind: stepped back {}s", seconds);
         Ok(())
     }
