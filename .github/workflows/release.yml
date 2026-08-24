@@ -10,7 +10,6 @@ jobs:
   release:
     permissions:
       contents: write
-      releases: write
     strategy:
       fail-fast: false
       matrix:
