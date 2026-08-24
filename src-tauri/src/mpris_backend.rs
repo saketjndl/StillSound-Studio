@@ -72,6 +72,12 @@ impl MprisBackend {
         Ok(())
     }
 
+    pub fn get_volume(&self) -> Option<u32> {
+        self.get_player().ok()
+            .and_then(|p| p.get_volume().ok())
+            .map(|v| (v * 100.0).round() as u32)
+    }
+
     pub fn is_playing(&self) -> bool {
         self.get_player()
             .map(|p| p.get_playback_status().ok() == Some(PlaybackStatus::Playing))
@@ -127,6 +133,7 @@ impl MprisBackend {
     pub fn skip_prev(&self) -> Result<(), String> { Err("MPRIS not supported on this platform".into()) }
     pub fn seek_backward(&self, _seconds: u32) -> Result<(), String> { Err("MPRIS not supported on this platform".into()) }
     pub fn set_volume(&self, _volume_percent: u32) -> Result<(), String> { Err("MPRIS not supported on this platform".into()) }
+    pub fn get_volume(&self) -> Option<u32> { None }
     pub fn is_playing(&self) -> bool { false }
     pub fn get_track_info(&self) -> TrackInfo { TrackInfo::default() }
 }

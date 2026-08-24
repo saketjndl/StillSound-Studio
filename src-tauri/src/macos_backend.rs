@@ -80,6 +80,14 @@ impl MacosBackend {
         Ok(())
     }
 
+    pub fn get_volume(&self) -> Option<u32> {
+        // AppleScript sound volume is 0–100 on Spotify/Music
+        let script = "if application \"Spotify\" is running then return (sound volume of application \"Spotify\")\nif application \"Music\" is running then return (sound volume of application \"Music\")\nreturn \"\"";
+        self.run_osascript(script)
+            .ok()
+            .and_then(|s| s.trim().parse::<u32>().ok())
+    }
+
     pub fn is_playing(&self) -> bool {
         let res = self.run_osascript("if application \"Spotify\" is running then return (player state of application \"Spotify\" as string)\nif application \"Music\" is running then return (player state of application \"Music\" as string)\nreturn \"stopped\"");
         match res {
@@ -154,6 +162,7 @@ impl MacosBackend {
     pub fn skip_prev(&self) -> Result<(), String> { Err("macOS backend not supported on this platform".into()) }
     pub fn seek_backward(&self, _seconds: u32) -> Result<(), String> { Err("macOS backend not supported on this platform".into()) }
     pub fn set_volume(&self, _volume_percent: u32) -> Result<(), String> { Err("macOS backend not supported on this platform".into()) }
+    pub fn get_volume(&self) -> Option<u32> { None }
     pub fn is_playing(&self) -> bool { false }
     pub fn get_track_info(&self) -> TrackInfo { TrackInfo::default() }
 }
