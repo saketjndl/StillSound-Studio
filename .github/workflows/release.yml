@@ -63,3 +63,14 @@ jobs:
           releaseDraft: false
           prerelease: false
           args: ${{ matrix.args }}
+
+      - name: Upload Browser Extension to Release
+        if: matrix.platform == 'windows-latest'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cd browser-extension
+          tar -a -c -f ../StillSound-Extension-v3.0.0.zip *
+          cd ..
+          gh release upload ${{ github.ref_name }} StillSound-Extension-v3.0.0.zip --clobber
+        shell: bash
