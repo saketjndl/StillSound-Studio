@@ -19,9 +19,11 @@ use tauri::{AppHandle, Runtime, Emitter, Manager};
 use tauri::tray::{TrayIconBuilder, TrayIconEvent};
 use tauri::menu::{Menu, MenuItem};
 use serde::{Deserialize, Serialize};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 use futures_util::{StreamExt, SinkExt};
-use tokio_tungstenite::accept_async;
+use tokio_tungstenite::accept_hdr_async;
+use tokio_tungstenite::tungstenite::handshake::server::{ErrorResponse, Request, Response};
+use tokio_tungstenite::tungstenite::http::StatusCode;
 use tokio::net::TcpListener;
 use reqwest::Client;
 use std::collections::HashMap;
@@ -30,7 +32,77 @@ use sha2::{Sha256, Digest};
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use std::fs;
 use std::path::PathBuf;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
+
+static HTTP_CLIENT: OnceLock<Client> = OnceLock::new();
+static REFRESH_LOCK: OnceLock<tokio::sync::Mutex<()>> = OnceLock::new();
+static CONFIG_TX: OnceLock<tokio::sync::broadcast::Sender<String>> = OnceLock::new();
+
+fn http_client() -> &'static Client {
+    HTTP_CLIENT.get_or_init(Client::new)
+}
+
+fn refresh_lock() -> &'static tokio::sync::Mutex<()> {
+    REFRESH_LOCK.get_or_init(|| tokio::sync::Mutex::new(()))
+}
+
+fn config_broadcaster() -> &'static tokio::sync::broadcast::Sender<String> {
+    CONFIG_TX.get_or_init(|| {
+        let (tx, _) = tokio::sync::broadcast::channel(16);
+        tx
+    })
+}
+
+fn broadcast_site_config(site_actions: &HashMap<String, SiteAction>) {
+    let config_msg = serde_json::json!({
+        "type": "site_config",
+        "site_actions": site_actions
+    });
+    if let Ok(json) = serde_json::to_string(&config_msg) {
+        let _ = config_broadcaster().send(json);
+    }
+}
+
+fn domain_matches(hostname: &str, domain: &str) -> bool {
+    hostname == domain || hostname.ends_with(&format!(".{}", domain))
+}
+
+fn resolve_site_action(site_actions: &HashMap<String, SiteAction>, hostname: &str) -> Option<SiteAction> {
+    let clean = hostname.trim().to_lowercase();
+    let clean = clean.strip_prefix("www.").unwrap_or(&clean);
+    if clean.is_empty() {
+        return None;
+    }
+
+    if let Some(action) = site_actions.get(clean) {
+        return Some(action.clone());
+    }
+
+    let parts: Vec<&str> = clean.split('.').collect();
+    for i in 1..parts.len().saturating_sub(1) {
+        let parent = parts[i..].join(".");
+        if let Some(action) = site_actions.get(&parent) {
+            return Some(action.clone());
+        }
+    }
+    None
+}
+
+fn is_allowed_ws_origin(origin: &str) -> bool {
+    let lower = origin.to_ascii_lowercase();
+    lower.starts_with("chrome-extension://")
+        || lower.starts_with("moz-extension://")
+        || lower.starts_with("safari-web-extension://")
+        || lower == "http://127.0.0.1:9877"
+        || lower == "http://localhost:9877"
+}
+
+fn current_unix_secs() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
+}
 
 // Bundled Spotify Client ID — safe to embed (PKCE, no client secret).
 // Override at build time: STILLSOUND_CLIENT_ID=xxx cargo build
@@ -95,11 +167,23 @@ pub struct AppState {
     pub auto_pause_count: u32,
     #[serde(default)]
     pub auth_failure_count: u32,
+    #[serde(default)]
+    pub recap_week_start: u64,
     // Legacy support for backwards compatibility
     #[serde(default)]
     pub enabled_sites: HashMap<String, bool>,
     #[serde(skip)]
     pub active_bridges: HashMap<String, (bool, SiteAction)>,
+    #[serde(skip)]
+    pub video_pause_instant: Option<Instant>,
+    #[serde(skip)]
+    pub mic_pause_instant: Option<Instant>,
+    #[serde(skip)]
+    pub duck_generation: u64,
+    #[serde(skip)]
+    pub oauth_state: Option<String>,
+    #[serde(skip)]
+    pub last_music_playing: bool,
 }
 
 fn default_true() -> bool { true }
@@ -130,6 +214,7 @@ impl Default for AppState {
             music_minutes_this_week: 0,
             auto_pause_count: 0,
             auth_failure_count: 0,
+            recap_week_start: current_unix_secs(),
             ducking_level: 20,
             is_ducked: false,
             pre_duck_volume: None,
@@ -165,6 +250,11 @@ impl Default for AppState {
             },
             enabled_sites: HashMap::new(),
             active_bridges: HashMap::new(),
+            video_pause_instant: None,
+            mic_pause_instant: None,
+            duck_generation: 0,
+            oauth_state: None,
+            last_music_playing: false,
         }
     }
 }
@@ -173,17 +263,52 @@ pub struct StateWrapper(pub Arc<Mutex<AppState>>);
 
 impl AppState {
     fn get_save_path() -> PathBuf {
-        if let Ok(appdata) = std::env::var("APPDATA") {
-            let mut path = PathBuf::from(appdata);
-            path.push("StillSound");
-            fs::create_dir_all(&path).ok();
-            path.push("settings.json");
-            path
-        } else {
-            let mut path = std::env::current_dir().unwrap_or_default();
-            path.push("stillsound_settings.json");
-            path
+        #[cfg(target_os = "windows")]
+        {
+            if let Ok(appdata) = std::env::var("APPDATA") {
+                let mut path = PathBuf::from(appdata);
+                path.push("StillSound");
+                fs::create_dir_all(&path).ok();
+                path.push("settings.json");
+                return path;
+            }
         }
+        #[cfg(target_os = "macos")]
+        {
+            if let Ok(home) = std::env::var("HOME") {
+                let mut path = PathBuf::from(home);
+                path.push("Library");
+                path.push("Application Support");
+                path.push("StillSound");
+                fs::create_dir_all(&path).ok();
+                path.push("settings.json");
+                return path;
+            }
+        }
+        #[cfg(all(unix, not(target_os = "macos")))]
+        {
+            if let Ok(xdg) = std::env::var("XDG_CONFIG_HOME") {
+                if !xdg.trim().is_empty() {
+                    let mut path = PathBuf::from(xdg);
+                    path.push("StillSound");
+                    fs::create_dir_all(&path).ok();
+                    path.push("settings.json");
+                    return path;
+                }
+            }
+            if let Ok(home) = std::env::var("HOME") {
+                let mut path = PathBuf::from(home);
+                path.push(".config");
+                path.push("StillSound");
+                fs::create_dir_all(&path).ok();
+                path.push("settings.json");
+                return path;
+            }
+        }
+
+        let mut path = std::env::current_dir().unwrap_or_default();
+        path.push("stillsound_settings.json");
+        path
     }
 
     pub fn load() -> Self {
@@ -197,15 +322,29 @@ impl AppState {
             state.pause_timestamp = None;
             state.mic_active = false;
             state.mic_paused_or_ducked = false;
+            state.video_pause_instant = None;
+            state.mic_pause_instant = None;
+            state.duck_generation = 0;
+            state.oauth_state = None;
+            state.last_music_playing = false;
+
+            let now = current_unix_secs();
+            if state.recap_week_start == 0 || now.saturating_sub(state.recap_week_start) >= 7 * 86400 {
+                state.focus_minutes_this_week = 0;
+                state.music_minutes_this_week = 0;
+                state.auto_pause_count = 0;
+                state.recap_week_start = now;
+            }
 
             // Migrate legacy enabled_sites to site_actions if needed
             if state.site_actions.is_empty() && !state.enabled_sites.is_empty() {
                 println!("[MIGRATION] Migrating legacy site toggles to site_actions matrix...");
                 let social_sites = ["twitter.com", "x.com", "reddit.com", "instagram.com", "facebook.com", "tiktok.com"];
                 for (site, enabled) in &state.enabled_sites {
+                    let clean = site.trim_start_matches("www.");
                     if !enabled {
                         state.site_actions.insert(site.clone(), SiteAction::Ignore);
-                    } else if social_sites.iter().any(|s| site.contains(s)) {
+                    } else if social_sites.iter().any(|s| domain_matches(clean, s)) {
                         state.site_actions.insert(site.clone(), SiteAction::Duck);
                     } else {
                         state.site_actions.insert(site.clone(), SiteAction::Pause);
@@ -248,24 +387,31 @@ async fn smooth_duck_volume(state: &Arc<Mutex<AppState>>, target_vol: u32) {
         None
     };
 
-    let (current_vol, device_id) = {
+    let (current_vol, effective_target, device_id, my_gen) = {
         let mut s = state.lock().unwrap();
         if s.is_ducked {
             return; // Already ducked
         }
-        let cur = universal_vol.unwrap_or(s.volume).max(75);
+        let cur = universal_vol.unwrap_or(s.volume).clamp(5, 100);
+        if cur <= target_vol {
+            return; // Already quieter than or equal to target duck volume
+        }
         s.volume = cur;
         s.pre_duck_volume = Some(cur);
         s.is_ducked = true;
-        (cur, s.current_device_id.clone())
+        s.duck_generation = s.duck_generation.wrapping_add(1);
+        (cur, target_vol.min(cur), s.current_device_id.clone(), s.duck_generation)
     };
 
-    println!("[DUCK] Smooth ducking volume: {}% -> {}% (mode: {})", current_vol, target_vol, sync_mode);
+    println!("[DUCK] Smooth ducking volume: {}% -> {}% (mode: {})", current_vol, effective_target, sync_mode);
 
-    let steps = 4;
-    let diff = current_vol.saturating_sub(target_vol);
+    let (steps, step_delay_ms) = if sync_mode == SyncMode::Spotify { (2, 100) } else { (4, 40) };
+    let diff = current_vol.saturating_sub(effective_target);
     for i in 1..=steps {
-        let step_vol = current_vol.saturating_sub(diff * i / steps).max(target_vol);
+        if state.lock().unwrap().duck_generation != my_gen {
+            return;
+        }
+        let step_vol = current_vol.saturating_sub(diff * i / steps).max(effective_target);
         match sync_mode {
             SyncMode::Spotify => {
                 let _ = spotify_set_volume(state, step_vol, device_id.clone()).await;
@@ -276,27 +422,33 @@ async fn smooth_duck_volume(state: &Arc<Mutex<AppState>>, target_vol: u32) {
                 }).await;
             }
         }
-        tokio::time::sleep(tokio::time::Duration::from_millis(40)).await;
+        if i < steps {
+            tokio::time::sleep(tokio::time::Duration::from_millis(step_delay_ms)).await;
+        }
     }
 }
 
 async fn smooth_unduck_volume(state: &Arc<Mutex<AppState>>) {
-    let (target_vol, current_duck_vol, device_id, sync_mode) = {
+    let (target_vol, current_duck_vol, device_id, sync_mode, my_gen) = {
         let mut s = state.lock().unwrap();
         if !s.is_ducked {
             return;
         }
         s.is_ducked = false;
-        let pre = s.pre_duck_volume.unwrap_or(s.volume).max(75);
+        let pre = s.pre_duck_volume.unwrap_or(s.volume).clamp(5, 100);
         s.pre_duck_volume = None;
-        (pre, s.ducking_level, s.current_device_id.clone(), s.sync_mode.clone())
+        s.duck_generation = s.duck_generation.wrapping_add(1);
+        (pre, s.ducking_level, s.current_device_id.clone(), s.sync_mode.clone(), s.duck_generation)
     };
 
     println!("[DUCK] Smooth restoring volume: {}% -> {}% (mode: {})", current_duck_vol, target_vol, sync_mode);
-    let steps = 4;
+    let (steps, step_delay_ms) = if sync_mode == SyncMode::Spotify { (2, 100) } else { (4, 40) };
     let start_vol = current_duck_vol.min(target_vol);
     let diff = target_vol.saturating_sub(start_vol);
     for i in 1..=steps {
+        if state.lock().unwrap().duck_generation != my_gen {
+            return;
+        }
         let step_vol = start_vol + (diff * i / steps);
         match sync_mode {
             SyncMode::Spotify => {
@@ -308,7 +460,9 @@ async fn smooth_unduck_volume(state: &Arc<Mutex<AppState>>) {
                 }).await;
             }
         }
-        tokio::time::sleep(tokio::time::Duration::from_millis(40)).await;
+        if i < steps {
+            tokio::time::sleep(tokio::time::Duration::from_millis(step_delay_ms)).await;
+        }
     }
 }
 
@@ -343,7 +497,7 @@ async fn media_seek_backward(state: &Arc<Mutex<AppState>>, seconds: u32) -> Resu
 
 async fn spotify_seek(state: &Arc<Mutex<AppState>>, position_ms: u64, device_id: Option<String>) -> Result<(), String> {
     let token = state.lock().unwrap().access_token.clone().ok_or("No token")?;
-    let client = Client::new();
+    let client = http_client();
     let mut url = format!("https://api.spotify.com/v1/me/player/seek?position_ms={}", position_ms);
     if let Some(ref id) = device_id {
         url = format!("{}&device_id={}", url, id);
@@ -356,7 +510,7 @@ async fn spotify_seek(state: &Arc<Mutex<AppState>>, position_ms: u64, device_id:
         .map_err(|e| e.to_string())?;
 
     if res.status() == reqwest::StatusCode::UNAUTHORIZED {
-        if let Ok(new_at) = spotify_refresh_token(state).await {
+        if let Ok(new_at) = spotify_refresh_token(state, Some(&token)).await {
             let _ = client.put(&url)
                 .bearer_auth(&new_at)
                 .header("Content-Length", "0")
@@ -553,31 +707,49 @@ async fn start_extension_bridge<R: Runtime>(app: AppHandle<R>, state: Arc<Mutex<
     while let Ok((stream, _)) = listener.accept().await {
         let app_clone = app.clone();
         let state_clone = state.clone();
-        
+
         tauri::async_runtime::spawn(async move {
             let bridge_id = (rand::random::<u64>()).to_string();
-            let ws_stream = match accept_async(stream).await {
+            let ws_stream = match accept_hdr_async(
+                stream,
+                |req: &Request, resp: Response| -> Result<Response, ErrorResponse> {
+                    if let Some(origin) = req.headers().get("origin").and_then(|v| v.to_str().ok()) {
+                        if !is_allowed_ws_origin(origin) {
+                            let err = tokio_tungstenite::tungstenite::http::Response::builder()
+                                .status(StatusCode::FORBIDDEN)
+                                .body(Some("Forbidden WebSocket origin".to_string()))
+                                .unwrap();
+                            return Err(err);
+                        }
+                    }
+                    Ok(resp)
+                },
+            )
+            .await
+            {
                 Ok(ws) => ws,
                 Err(e) => {
-                    eprintln!("[STILLSOUND] WS handshake failed: {}", e);
+                    eprintln!("[STILLSOUND] WS handshake rejected/failed: {}", e);
                     return;
                 }
             };
+
             println!("[STILLSOUND] Extension Linked: {}", bridge_id);
             {
                 let mut s = state_clone.lock().unwrap();
                 s.active_bridges.insert(bridge_id.clone(), (false, SiteAction::Pause));
             }
-            app_clone.emit("bridge_linked", ()).unwrap();
+            let _ = app_clone.emit("bridge_linked", ());
 
             let (mut write, mut read) = ws_stream.split();
+            let mut config_rx = config_broadcaster().subscribe();
 
             // Send initial media state on connect (mode-aware)
             let info = get_current_track_info(&state_clone).await;
             if let Ok(json) = serde_json::to_string(&info) {
                 let _ = write.send(tokio_tungstenite::tungstenite::Message::Text(json)).await;
             }
-            
+
             // Send site actions config
             let site_actions = state_clone.lock().unwrap().site_actions.clone();
             let config_msg = serde_json::json!({
@@ -588,12 +760,38 @@ async fn start_extension_bridge<R: Runtime>(app: AppHandle<R>, state: Arc<Mutex<
                 let _ = write.send(tokio_tungstenite::tungstenite::Message::Text(json)).await;
             }
 
-            while let Some(msg) = read.next().await {
-                if let Ok(msg) = msg {
-                    if msg.is_text() {
-                        let text = msg.to_text().unwrap();
+            loop {
+                tokio::select! {
+                    biased;
+                    config_update = config_rx.recv() => {
+                        match config_update {
+                            Ok(json) => {
+                                if write.send(tokio_tungstenite::tungstenite::Message::Text(json)).await.is_err() {
+                                    break;
+                                }
+                            }
+                            Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {
+                                let site_actions = state_clone.lock().unwrap().site_actions.clone();
+                                let msg = serde_json::json!({ "type": "site_config", "site_actions": site_actions });
+                                if let Ok(json) = serde_json::to_string(&msg) {
+                                    let _ = write.send(tokio_tungstenite::tungstenite::Message::Text(json)).await;
+                                }
+                            }
+                            Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+                        }
+                    }
+                    ws_next = read.next() => {
+                        let Some(msg_res) = ws_next else { break; };
+                        let Ok(msg) = msg_res else { break; };
+                        if msg.is_close() {
+                            break;
+                        }
+                        if !msg.is_text() {
+                            continue;
+                        }
+                        let Ok(text) = msg.to_text() else { continue; };
                         let event: serde_json::Value = serde_json::from_str(text).unwrap_or_default();
-                        
+
                         if let Some(event_type) = event["type"].as_str() {
                             match event_type {
                                 "get_spotify_info" => {
@@ -633,12 +831,16 @@ async fn start_extension_bridge<R: Runtime>(app: AppHandle<R>, state: Arc<Mutex<
                                 }
                                 "spotify_pause" => {
                                     println!("[STILLSOUND] Extension requested: PAUSE");
-                                    let device_id = {
+                                    let (device_id, was_ducked) = {
                                         let mut s = state_clone.lock().unwrap();
                                         s.manual_pause_detected = true;
                                         s.app_paused_spotify = false;
-                                        s.current_device_id.clone()
+                                        (s.current_device_id.clone(), s.is_ducked)
                                     };
+
+                                    if was_ducked {
+                                        smooth_unduck_volume(&state_clone).await;
+                                    }
 
                                     match media_control(&state_clone, false, device_id).await {
                                         Ok(_) => println!("[STILLSOUND] Pause command succeeded"),
@@ -678,8 +880,7 @@ async fn start_extension_bridge<R: Runtime>(app: AppHandle<R>, state: Arc<Mutex<
                                         let _ = write.send(tokio_tungstenite::tungstenite::Message::Text(json)).await;
                                     }
                                 }
-                                _ => {
-                                    // Handle video_playing, video_paused with hostname & action
+                                "video_playing" | "video_paused" => {
                                     let hostname = event["hostname"].as_str().map(|s| s.to_string());
                                     let action_str = event["action"].as_str();
                                     let action = action_str.map(|a| match a {
@@ -689,16 +890,17 @@ async fn start_extension_bridge<R: Runtime>(app: AppHandle<R>, state: Arc<Mutex<
                                     });
                                     handle_extension_event(event_type, Some(bridge_id.clone()), hostname, action, &app_clone, &state_clone).await;
                                 }
+                                _ => {}
                             }
                         }
                     }
                 }
             }
-            
+
             // Cleanup on disconnect
             println!("[STILLSOUND] Extension Unlinked: {}", bridge_id);
             handle_extension_event("disconnect", Some(bridge_id), None, None, &app_clone, &state_clone).await;
-            app_clone.emit("bridge_unlinked", ()).unwrap();
+            let _ = app_clone.emit("bridge_unlinked", ());
         });
     }
 }
@@ -711,20 +913,12 @@ pub async fn handle_extension_event<R: Runtime>(
     app: &AppHandle<R>,
     state: &Arc<Mutex<AppState>>
 ) {
-    let now_secs = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
-
-    let (mut device_id, sync_enabled, sync_mode, _site_action, ducking_level, smart_rewind_enabled, smart_rewind_secs, rewind_threshold, pause_time) = {
+    let (mut device_id, sync_enabled, sync_mode, _site_action, ducking_level, smart_rewind_enabled, smart_rewind_secs, rewind_threshold, pause_instant) = {
         let mut s = state.lock().unwrap();
 
-        // Determine effective site action from authoritative backend site_actions map
+        // Determine effective site action from authoritative backend site_actions map (exact match first)
         let action = if let Some(ref h) = hostname {
-            let host_clean = h.trim_start_matches("www.");
-            s.site_actions.iter()
-                .find(|(k, _)| host_clean == k.as_str() || host_clean.ends_with(format!(".{}", k).as_str()))
-                .map(|(_, a)| a.clone())
+            resolve_site_action(&s.site_actions, h)
                 .or(action_override)
                 .unwrap_or(SiteAction::Pause)
         } else {
@@ -758,7 +952,7 @@ pub async fn handle_extension_event<R: Runtime>(
             s.smart_rewind_enabled,
             s.smart_rewind_seconds,
             s.smart_rewind_threshold_secs,
-            s.pause_timestamp,
+            s.video_pause_instant,
         )
     };
 
@@ -776,7 +970,7 @@ pub async fn handle_extension_event<R: Runtime>(
         s.yt_playing = is_any_video_active;
     }
 
-    app.emit("sync_event", if is_any_video_active { "yt_playing" } else { "yt_paused" }).unwrap();
+    let _ = app.emit("sync_event", if is_any_video_active { "yt_playing" } else { "yt_paused" });
 
     if !sync_enabled { return; }
 
@@ -794,14 +988,13 @@ pub async fn handle_extension_event<R: Runtime>(
         // High priority: Full pause
         let is_playing = media_is_playing(state).await;
         if is_playing {
-            // If ducked, unduck first before hard pausing to keep volume baseline consistent
             smooth_unduck_volume(state).await;
-            if let Ok(_) = media_control(state, false, device_id).await {
+            if media_control(state, false, device_id).await.is_ok() {
                 let mut s = state.lock().unwrap();
                 s.app_paused_spotify = true;
                 s.auto_pause_count += 1;
                 s.manual_pause_detected = false;
-                s.pause_timestamp = Some(now_secs);
+                s.video_pause_instant = Some(Instant::now());
                 s.save();
                 println!("[STILLSOUND] Paused media because video started (mode: {})", sync_mode);
             }
@@ -815,13 +1008,14 @@ pub async fn handle_extension_event<R: Runtime>(
         // Medium priority: Smooth Audio Ducking
         let was_paused_by_app = { state.lock().unwrap().app_paused_spotify };
         if was_paused_by_app {
-            // Video stepped down from Pause -> Duck: resume playback at ducked level
-            let _ = media_control(state, true, device_id.clone()).await;
-            let mut s = state.lock().unwrap();
-            s.app_paused_spotify = false;
-        }
-        let is_playing = media_is_playing(state).await;
-        if is_playing {
+            if media_control(state, true, device_id.clone()).await.is_ok() {
+                let mut s = state.lock().unwrap();
+                s.app_paused_spotify = false;
+                s.video_pause_instant = None;
+            }
+            // Player was just resumed by StillSound; apply duck directly without racing PlaybackStatus
+            smooth_duck_volume(state, ducking_level).await;
+        } else if media_is_playing(state).await {
             smooth_duck_volume(state, ducking_level).await;
         }
     } else {
@@ -837,15 +1031,18 @@ pub async fn handle_extension_event<R: Runtime>(
 
         if was_paused_by_app && !manual_override {
             if event != "disconnect" {
-                if let Ok(_) = media_control(state, true, device_id.clone()).await {
-                    let mut s = state.lock().unwrap();
-                    s.app_paused_spotify = false;
+                if media_control(state, true, device_id.clone()).await.is_ok() {
+                    {
+                        let mut s = state.lock().unwrap();
+                        s.app_paused_spotify = false;
+                        s.manual_pause_detected = false;
+                        s.video_pause_instant = None;
+                    }
                     println!("[STILLSOUND] Resumed media (auto, mode: {})", sync_mode);
 
-                    // Check for Smart Rewind (> threshold seconds paused)
                     if smart_rewind_enabled {
-                        if let Some(paused_at) = pause_time {
-                            let pause_duration = now_secs.saturating_sub(paused_at);
+                        if let Some(paused_at) = pause_instant {
+                            let pause_duration = paused_at.elapsed().as_secs();
                             if pause_duration >= rewind_threshold as u64 {
                                 println!("[STILLSOUND] Pause duration was {}s (>= {}s threshold) — triggering Smart Rewind", pause_duration, rewind_threshold);
                                 let state_rewind = state.clone();
@@ -856,15 +1053,15 @@ pub async fn handle_extension_event<R: Runtime>(
                             }
                         }
                     }
-                    s.pause_timestamp = None;
                 }
             } else {
                 println!("[STILLSOUND] Extension disconnected while paused — holding state.");
             }
-        } else {
+        } else if event != "disconnect" {
             let mut s = state.lock().unwrap();
             s.app_paused_spotify = false;
-            s.pause_timestamp = None;
+            s.manual_pause_detected = false;
+            s.video_pause_instant = None;
         }
     }
 }
@@ -874,7 +1071,7 @@ pub async fn handle_mic_event<R: Runtime>(
     _app: &AppHandle<R>,
     state: &Arc<Mutex<AppState>>
 ) {
-    let (enabled, action, duck_level, device_id, smart_rewind_enabled, smart_rewind_secs, rewind_threshold, yt_playing) = {
+    let (enabled, action, duck_level, device_id, smart_rewind_enabled, smart_rewind_secs, rewind_threshold, yt_playing, was_mic_actioned, manual_override, mic_pause_instant) = {
         let s = state.lock().unwrap();
         (
             s.mic_aware_enabled,
@@ -885,64 +1082,62 @@ pub async fn handle_mic_event<R: Runtime>(
             s.smart_rewind_seconds,
             s.smart_rewind_threshold_secs,
             s.yt_playing,
+            s.mic_paused_or_ducked,
+            s.manual_pause_detected,
+            s.mic_pause_instant,
         )
     };
 
-    if !enabled || yt_playing { return; }
-
-    let now_secs = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
-
-    if mic_active {
-        let is_playing = media_is_playing(state).await;
-        if is_playing {
-            match action {
-                SiteAction::Duck => {
-                    smooth_duck_volume(state, duck_level).await;
-                    let mut s = state.lock().unwrap();
-                    s.mic_paused_or_ducked = true;
-                }
-                SiteAction::Pause => {
-                    if let Ok(_) = media_control(state, false, device_id).await {
-                        let mut s = state.lock().unwrap();
-                        s.mic_paused_or_ducked = true;
-                        s.pause_timestamp = Some(now_secs);
-                    }
-                }
-                SiteAction::Ignore => {}
-            }
-        }
-    } else {
-        let was_mic_actioned = { state.lock().unwrap().mic_paused_or_ducked };
+    if !mic_active {
         if was_mic_actioned {
-            match action {
-                SiteAction::Duck => {
-                    smooth_unduck_volume(state).await;
-                }
-                SiteAction::Pause => {
-                    let pause_time = { state.lock().unwrap().pause_timestamp };
-                    if let Ok(_) = media_control(state, true, device_id).await {
-                        if smart_rewind_enabled {
-                            if let Some(paused_at) = pause_time {
-                                let dur = now_secs.saturating_sub(paused_at);
-                                if dur >= rewind_threshold as u64 {
-                                    let state_rewind = state.clone();
-                                    tauri::async_runtime::spawn(async move {
-                                        tokio::time::sleep(std::time::Duration::from_millis(300)).await;
-                                        let _ = media_seek_backward(&state_rewind, smart_rewind_secs).await;
-                                    });
+            if !yt_playing {
+                match action {
+                    SiteAction::Duck => {
+                        smooth_unduck_volume(state).await;
+                    }
+                    SiteAction::Pause => {
+                        if !manual_override && media_control(state, true, device_id).await.is_ok() {
+                            if smart_rewind_enabled {
+                                if let Some(paused_at) = mic_pause_instant {
+                                    let dur = paused_at.elapsed().as_secs();
+                                    if dur >= rewind_threshold as u64 {
+                                        let state_rewind = state.clone();
+                                        tauri::async_runtime::spawn(async move {
+                                            tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+                                            let _ = media_seek_backward(&state_rewind, smart_rewind_secs).await;
+                                        });
+                                    }
                                 }
                             }
                         }
                     }
+                    SiteAction::Ignore => {}
                 }
-                SiteAction::Ignore => {}
             }
             let mut s = state.lock().unwrap();
             s.mic_paused_or_ducked = false;
-            s.pause_timestamp = None;
+            s.mic_pause_instant = None;
+        }
+        return;
+    }
+
+    if !enabled || yt_playing { return; }
+
+    if media_is_playing(state).await {
+        match action {
+            SiteAction::Duck => {
+                smooth_duck_volume(state, duck_level).await;
+                let mut s = state.lock().unwrap();
+                s.mic_paused_or_ducked = true;
+            }
+            SiteAction::Pause => {
+                if media_control(state, false, device_id).await.is_ok() {
+                    let mut s = state.lock().unwrap();
+                    s.mic_paused_or_ducked = true;
+                    s.mic_pause_instant = Some(Instant::now());
+                }
+            }
+            SiteAction::Ignore => {}
         }
     }
 }
@@ -958,15 +1153,28 @@ async fn start_callback_server<R: Runtime>(app: AppHandle<R>, state: Arc<Mutex<A
     let callback = warp::path("callback")
         .and(warp::query::<HashMap<String, String>>())
         .map(move |params: HashMap<String, String>| {
+            let state_valid = {
+                let s = state_clone.lock().unwrap();
+                match (s.oauth_state.as_deref(), params.get("state").map(String::as_str)) {
+                    (Some(expected), Some(actual)) => expected == actual,
+                    _ => false,
+                }
+            };
+            if !state_valid {
+                return warp::reply::html(
+                    "<h1>Authentication Failed</h1><p>Invalid or expired OAuth state parameter.</p>",
+                );
+            }
+
             if let Some(code) = params.get("code") {
                 let code = code.clone();
                 let app_inner = app_clone.clone();
                 let state_inner = state_clone.clone();
-                
+
                 tauri::async_runtime::spawn(async move {
                     handle_spotify_code(code, app_inner, state_inner).await;
                 });
-                
+
                 warp::reply::html("<h1>Authentication Successful!</h1><p>StillSound Studio is now linked. You can close this window.</p>")
             } else {
                 warp::reply::html("<h1>Authentication Failed</h1>")
@@ -974,12 +1182,15 @@ async fn start_callback_server<R: Runtime>(app: AppHandle<R>, state: Arc<Mutex<A
         });
 
     println!("[AUTH] Callback server starting on 127.0.0.1:8921");
-    warp::serve(callback).run(([127, 0, 0, 1], 8921)).await;
+    match warp::serve(callback).try_bind_ephemeral(([127, 0, 0, 1], 8921)) {
+        Ok((_addr, server)) => server.await,
+        Err(e) => eprintln!("[AUTH] Callback server failed to bind 127.0.0.1:8921: {}", e),
+    }
 }
 
 // --- OBS Studio Overlay Server ---
 
-async fn start_obs_server() {
+async fn start_obs_server(state: Arc<Mutex<AppState>>) {
     use warp::Filter;
 
     let overlay_html = r#"<!DOCTYPE html>
@@ -995,7 +1206,7 @@ async fn start_obs_server() {
         .overlay-card.visible { opacity: 1; transform: translateY(0) scale(1); }
         .overlay-card.paused-video { border-color: rgba(255, 76, 0, 0.5); background: linear-gradient(135deg, rgba(28, 28, 30, 0.9) 0%, rgba(45, 20, 10, 0.9) 100%); }
         .overlay-card.ducked-video { border-color: rgba(255, 170, 0, 0.5); background: linear-gradient(135deg, rgba(28, 28, 30, 0.9) 0%, rgba(45, 35, 10, 0.9) 100%); }
-        .album-art { width: 48px; height: 48px; border-radius: 12px; object-fit: cover; background: #2c2c2e; flex-shrink: 0; box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
+        .album-art { width: 48px; height: 48px; border-radius: 12px; object-fit: cover; background: #2c2c2e; flex-shrink: 0; box-shadow: 0 4px 12px rgba(0,0,0,0.3); display: none; }
         .info { display: flex; flex-direction: column; gap: 2px; max-width: 280px; }
         .track-name { color: #ffffff; font-size: 15px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .track-artist { color: rgba(255, 255, 255, 0.7); font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -1014,9 +1225,9 @@ async fn start_obs_server() {
 </head>
 <body>
     <div class="overlay-card" id="card">
-        <img class="album-art" id="art" src="" />
+        <img class="album-art" id="art" src="" alt="" />
         <div class="info">
-            <div class="track-name" id="title">Waiting for Spotify...</div>
+            <div class="track-name" id="title">Waiting for audio...</div>
             <div class="track-artist" id="artist">StillSound Studio</div>
         </div>
         <div class="waveform" id="wave">
@@ -1030,75 +1241,93 @@ async fn start_obs_server() {
         const artist = document.getElementById('artist');
         const wave = document.getElementById('wave');
 
-        function connect() {
-            const ws = new WebSocket('ws://127.0.0.1:9876');
-            ws.onopen = () => {
-                ws.send(JSON.stringify({ type: 'get_spotify_info' }));
-                setInterval(() => {
-                    if (ws.readyState === WebSocket.OPEN) {
-                        ws.send(JSON.stringify({ type: 'get_spotify_info' }));
-                    }
-                }, 1000);
-            };
-            ws.onmessage = (e) => {
-                try {
-                    const data = JSON.parse(e.data);
-                    if (data.track_name && data.track_name.length > 0) {
-                        card.classList.add('visible');
-                        title.textContent = data.track_name;
-                        
-                        let sub = data.artist_name || '';
-                        if (data.album_name && data.album_name !== data.track_name) {
-                            sub += sub ? ' · ' + data.album_name : data.album_name;
-                        }
-                        
-                        card.classList.remove('paused-video', 'ducked-video');
-                        if (data.is_ducked) {
-                            card.classList.add('ducked-video');
-                            artist.textContent = 'Ducked · Ambient Feed Video';
-                            wave.classList.add('active');
-                        } else if (data.yt_playing || data.app_paused_spotify) {
-                            card.classList.add('paused-video');
-                            artist.textContent = 'Auto-Paused · Watching Video';
-                            wave.classList.remove('active');
-                        } else if (!data.is_playing) {
-                            artist.textContent = sub ? `${sub} (Paused)` : 'Paused';
-                            wave.classList.remove('active');
-                        } else {
-                            artist.textContent = sub;
-                            wave.classList.add('active');
-                        }
+        async function pollState() {
+            try {
+                const res = await fetch('/state', { cache: 'no-store' });
+                if (!res.ok) return;
+                const data = await res.json();
+                if (data.track_name && data.track_name.length > 0) {
+                    card.classList.add('visible');
+                    title.textContent = data.track_name;
 
-                        if (data.album_art && art.src !== data.album_art) {
+                    let sub = data.artist_name || '';
+                    if (data.album_name && data.album_name !== data.track_name) {
+                        sub += sub ? ' · ' + data.album_name : data.album_name;
+                    }
+
+                    card.classList.remove('paused-video', 'ducked-video');
+                    if (data.is_ducked) {
+                        card.classList.add('ducked-video');
+                        artist.textContent = 'Ducked · Ambient Feed Video';
+                        wave.classList.add('active');
+                    } else if (data.yt_playing || data.app_paused_spotify) {
+                        card.classList.add('paused-video');
+                        artist.textContent = 'Auto-Paused · Watching Video';
+                        wave.classList.remove('active');
+                    } else if (!data.is_playing) {
+                        artist.textContent = sub ? `${sub} (Paused)` : 'Paused';
+                        wave.classList.remove('active');
+                    } else {
+                        artist.textContent = sub;
+                        wave.classList.add('active');
+                    }
+
+                    if (data.album_art) {
+                        art.style.display = 'block';
+                        if (art.src !== data.album_art) {
                             art.src = data.album_art;
                         }
                     } else {
-                        card.classList.remove('visible');
+                        art.style.display = 'none';
+                        art.removeAttribute('src');
                     }
-                } catch (err) {}
-            };
-            ws.onclose = () => { setTimeout(connect, 2000); };
+                } else {
+                    card.classList.remove('visible');
+                }
+            } catch (err) {}
         }
-        connect();
+
+        pollState();
+        setInterval(pollState, 1000);
     </script>
 </body>
 </html>"#;
 
-    let route = warp::any().map(move || warp::reply::html(overlay_html));
+    let state_route = warp::path("state")
+        .and(warp::get())
+        .and_then(move || {
+            let state_clone = state.clone();
+            async move {
+                let info = get_current_track_info(&state_clone).await;
+                Ok::<_, warp::Rejection>(warp::reply::json(&info))
+            }
+        });
+
+    let overlay_route = warp::any().map(move || warp::reply::html(overlay_html));
+    let routes = state_route.or(overlay_route);
+
     println!("[OBS] Overlay server starting on http://127.0.0.1:9877/overlay");
-    warp::serve(route).run(([127, 0, 0, 1], 9877)).await;
+    match warp::serve(routes).try_bind_ephemeral(([127, 0, 0, 1], 9877)) {
+        Ok((_addr, server)) => server.await,
+        Err(e) => eprintln!("[OBS] Overlay server failed to bind 127.0.0.1:9877: {}", e),
+    }
 }
 
 // --- Spotify Auth & API ---
 
 async fn handle_spotify_code<R: Runtime>(code: String, app: AppHandle<R>, state: Arc<Mutex<AppState>>) {
     let (client_id, verifier) = {
-        let s = state.lock().unwrap();
-        (s.client_id.clone(), s.code_verifier.clone())
+        let mut s = state.lock().unwrap();
+        // Clear pending OAuth state once callback enters code exchange to prevent replay.
+        let creds = (s.client_id.clone(), s.code_verifier.clone());
+        s.oauth_state = None;
+        s.code_verifier = None;
+        s.save();
+        creds
     };
 
     if let (Some(cid), Some(ver)) = (client_id, verifier) {
-        let client = Client::new();
+        let client = http_client();
         let mut params = HashMap::new();
         params.insert("grant_type", "authorization_code");
         params.insert("code", &code);
@@ -1112,45 +1341,55 @@ async fn handle_spotify_code<R: Runtime>(code: String, app: AppHandle<R>, state:
             .await;
 
         if let Ok(res) = res {
-            if let Ok(data) = res.json::<serde_json::Value>().await {
-                if let Some(token) = data["access_token"].as_str() {
-                    let token = token.to_string();
-                    let refresh = data["refresh_token"].as_str().map(|s| s.to_string());
-                    
-                    {
-                        let mut s = state.lock().unwrap();
-                        s.access_token = Some(token.clone());
-                        if refresh.is_some() {
-                            s.refresh_token = refresh;
+            if res.status().is_success() {
+                if let Ok(data) = res.json::<serde_json::Value>().await {
+                    if let Some(token) = data["access_token"].as_str() {
+                        let token = token.to_string();
+                        let refresh = data["refresh_token"].as_str().map(|s| s.to_string());
+
+                        {
+                            let mut s = state.lock().unwrap();
+                            s.access_token = Some(token.clone());
+                            if refresh.is_some() {
+                                s.refresh_token = refresh;
+                            }
+                            s.spotify_ready = true;
+                            s.auth_failure_count = 0;
+                            s.save();
                         }
-                        s.spotify_ready = true;
-                        s.save();
+
+                        let device = spotify_get_active_device_internal(&token).await;
+                        if let Some(device) = device {
+                            let mut s = state.lock().unwrap();
+                            s.current_device_id = Some(device);
+                            s.save();
+                        }
+
+                        println!("[AUTH] Successfully exchanged PKCE code for tokens!");
+                        let _ = app.emit("auth_success", ());
+                        return;
                     }
-                    
-                    let device = spotify_get_active_device_internal(&token).await;
-                    if let Some(device) = device {
-                        let mut s = state.lock().unwrap();
-                        s.current_device_id = Some(device);
-                        s.save();
-                    }
-                    
-                    println!("[AUTH] Successfully exchanged PKCE code for tokens!");
-                    app.emit("auth_success", ()).unwrap();
-                    return;
                 }
             }
         }
     }
 }
 
-async fn spotify_refresh_token(state: &Arc<Mutex<AppState>>) -> Result<String, String> {
+async fn spotify_refresh_token(state: &Arc<Mutex<AppState>>, failed_token: Option<&str>) -> Result<String, String> {
+    let _refresh_guard = refresh_lock().lock().await;
+
     let (client_id, refresh_token) = {
         let s = state.lock().unwrap();
+        if let (Some(failed), Some(ref current)) = (failed_token, &s.access_token) {
+            if current != failed {
+                return Ok(current.clone());
+            }
+        }
         (s.client_id.clone(), s.refresh_token.clone())
     };
 
     if let (Some(cid), Some(rt)) = (client_id, refresh_token) {
-        let client = Client::new();
+        let client = http_client();
         let mut params = HashMap::new();
         params.insert("grant_type", "refresh_token");
         params.insert("refresh_token", &rt);
@@ -1167,7 +1406,7 @@ async fn spotify_refresh_token(state: &Arc<Mutex<AppState>>) -> Result<String, S
             if let Some(new_at) = data["access_token"].as_str() {
                 let new_at = new_at.to_string();
                 let new_rt = data["refresh_token"].as_str().map(|s| s.to_string());
-                
+
                 let mut s = state.lock().unwrap();
                 s.access_token = Some(new_at.clone());
                 if new_rt.is_some() {
@@ -1179,7 +1418,7 @@ async fn spotify_refresh_token(state: &Arc<Mutex<AppState>>) -> Result<String, S
                 return Ok(new_at);
             }
         }
-        
+
         let mut s = state.lock().unwrap();
         s.auth_failure_count += 1;
         if s.auth_failure_count >= 3 && s.sync_mode == SyncMode::Spotify {
@@ -1199,62 +1438,137 @@ async fn spotify_refresh_token(state: &Arc<Mutex<AppState>>) -> Result<String, S
     Err("Failed to refresh token".into())
 }
 
-async fn spotify_get_active_device_internal(access_token: &str) -> Option<String> {
-    let client = Client::new();
-    let res = client.get("https://api.spotify.com/v1/me/player/devices")
+enum SpotifyFetch<T> {
+    Ok(T),
+    NoContent,
+    Unauthorized,
+    Error,
+}
+
+async fn spotify_get_active_device_fetch(access_token: &str) -> SpotifyFetch<Option<String>> {
+    let client = http_client();
+    let Ok(res) = client
+        .get("https://api.spotify.com/v1/me/player/devices")
         .bearer_auth(access_token)
         .send()
         .await
-        .ok()?;
+    else {
+        return SpotifyFetch::Error;
+    };
 
-    let data: serde_json::Value = res.json().await.ok()?;
-    let devices = data["devices"].as_array()?;
-    
-    devices.iter().find(|d| d["is_active"].as_bool().unwrap_or(false))
-        .or(devices.get(0))
-        .and_then(|d| d["id"].as_str().map(|s| s.to_string()))
+    if res.status() == reqwest::StatusCode::UNAUTHORIZED {
+        return SpotifyFetch::Unauthorized;
+    }
+    if !res.status().is_success() {
+        return SpotifyFetch::Error;
+    }
+
+    let Ok(data) = res.json::<serde_json::Value>().await else {
+        return SpotifyFetch::Error;
+    };
+    let Some(devices) = data["devices"].as_array() else {
+        return SpotifyFetch::Ok(None);
+    };
+
+    let selected = devices
+        .iter()
+        .find(|d| d["is_active"].as_bool().unwrap_or(false))
+        .or_else(|| devices.first())
+        .and_then(|d| d["id"].as_str().map(|s| s.to_string()));
+    SpotifyFetch::Ok(selected)
+}
+
+async fn spotify_get_active_device_internal(access_token: &str) -> Option<String> {
+    match spotify_get_active_device_fetch(access_token).await {
+        SpotifyFetch::Ok(device) => device,
+        _ => None,
+    }
 }
 
 async fn spotify_get_active_device(state: &Arc<Mutex<AppState>>) -> Option<String> {
     let token = state.lock().unwrap().access_token.clone()?;
-    if let Some(device) = spotify_get_active_device_internal(&token).await {
-        return Some(device);
+    match spotify_get_active_device_fetch(&token).await {
+        SpotifyFetch::Ok(device) => device,
+        SpotifyFetch::Unauthorized => {
+            if let Ok(new_at) = spotify_refresh_token(state, Some(&token)).await {
+                spotify_get_active_device_internal(&new_at).await
+            } else {
+                None
+            }
+        }
+        _ => None,
     }
-    if let Ok(new_at) = spotify_refresh_token(state).await {
-        return spotify_get_active_device_internal(&new_at).await;
-    }
-    None
 }
 
-async fn spotify_get_playback_state_internal(access_token: &str) -> Option<serde_json::Value> {
-    let client = Client::new();
-    let res = client.get("https://api.spotify.com/v1/me/player")
+async fn spotify_get_playback_state_fetch(access_token: &str) -> SpotifyFetch<serde_json::Value> {
+    let client = http_client();
+    let Ok(res) = client
+        .get("https://api.spotify.com/v1/me/player")
         .bearer_auth(access_token)
         .send()
         .await
-        .ok()?;
-    
-    if res.status() == 200 {
-        res.json().await.ok()
-    } else {
-        None
+    else {
+        return SpotifyFetch::Error;
+    };
+
+    match res.status() {
+        reqwest::StatusCode::OK => match res.json::<serde_json::Value>().await {
+            Ok(val) => SpotifyFetch::Ok(val),
+            Err(_) => SpotifyFetch::Error,
+        },
+        reqwest::StatusCode::NO_CONTENT => SpotifyFetch::NoContent,
+        reqwest::StatusCode::UNAUTHORIZED => SpotifyFetch::Unauthorized,
+        _ => SpotifyFetch::Error,
     }
 }
 
 async fn spotify_get_playback_state(state: &Arc<Mutex<AppState>>) -> Option<serde_json::Value> {
     let token = state.lock().unwrap().access_token.clone()?;
-    let res = spotify_get_playback_state_internal(&token).await;
-    if res.is_some() {
-        return res;
+    match spotify_get_playback_state_fetch(&token).await {
+        SpotifyFetch::Ok(val) => Some(val),
+        SpotifyFetch::Unauthorized => {
+            if let Ok(new_at) = spotify_refresh_token(state, Some(&token)).await {
+                match spotify_get_playback_state_fetch(&new_at).await {
+                    SpotifyFetch::Ok(val) => Some(val),
+                    _ => None,
+                }
+            } else {
+                None
+            }
+        }
+        _ => None,
     }
-    if let Ok(new_at) = spotify_refresh_token(state).await {
-        return spotify_get_playback_state_internal(&new_at).await;
+}
+
+async fn send_spotify_with_retry<F, Fut>(
+    state: &Arc<Mutex<AppState>>,
+    action_name: &str,
+    make_req: F,
+) -> Result<(), String>
+where
+    F: Fn(String) -> Fut,
+    Fut: std::future::Future<Output = Result<reqwest::Response, String>>,
+{
+    let token = state.lock().unwrap().access_token.clone().ok_or("No token")?;
+    let res = make_req(token.clone()).await?;
+
+    if res.status() == reqwest::StatusCode::UNAUTHORIZED {
+        if let Ok(new_at) = spotify_refresh_token(state, Some(&token)).await {
+            let retry_res = make_req(new_at).await?;
+            if retry_res.status().is_success() {
+                return Ok(());
+            }
+            return Err(format!("{} failed with status: {}", action_name, retry_res.status()));
+        }
+    } else if res.status().is_success() {
+        return Ok(());
     }
-    None
+
+    Err(format!("{} failed with status: {}", action_name, res.status()))
 }
 
 async fn spotify_control_internal(access_token: &str, play: bool, device_id: Option<String>) -> Result<reqwest::Response, String> {
-    let client = Client::new();
+    let client = http_client();
     let mut url = if play {
         "https://api.spotify.com/v1/me/player/play".to_string()
     } else {
@@ -1275,32 +1589,22 @@ async fn spotify_control_internal(access_token: &str, play: bool, device_id: Opt
 
 async fn spotify_control(state: &Arc<Mutex<AppState>>, play: bool, device_id: Option<String>) -> Result<(), String> {
     let token = state.lock().unwrap().access_token.clone().ok_or("No token")?;
-    
-    if let Some(playback) = spotify_get_playback_state_internal(&token).await {
+    if let SpotifyFetch::Ok(playback) = spotify_get_playback_state_fetch(&token).await {
         let is_currently_playing = playback["is_playing"].as_bool().unwrap_or(false);
         if play == is_currently_playing {
             return Ok(());
         }
     }
 
-    let res = spotify_control_internal(&token, play, device_id.clone()).await?;
-    
-    if res.status() == reqwest::StatusCode::UNAUTHORIZED {
-        if let Ok(new_at) = spotify_refresh_token(state).await {
-            let res = spotify_control_internal(&new_at, play, device_id).await?;
-            if res.status().is_success() {
-                return Ok(());
-            }
-        }
-    } else if res.status().is_success() {
-        return Ok(());
-    }
-
-    Err(format!("Control failed with status: {}", res.status()))
+    send_spotify_with_retry(state, "Control", move |tok| {
+        let dev = device_id.clone();
+        async move { spotify_control_internal(&tok, play, dev).await }
+    })
+    .await
 }
 
 async fn spotify_set_volume_internal(access_token: &str, volume: u32, device_id: Option<String>) -> Result<reqwest::Response, String> {
-    let client = Client::new();
+    let client = http_client();
     let vol = volume.min(100);
     let mut url = format!("https://api.spotify.com/v1/me/player/volume?volume_percent={}", vol);
     if let Some(ref id) = device_id {
@@ -1315,25 +1619,15 @@ async fn spotify_set_volume_internal(access_token: &str, volume: u32, device_id:
 }
 
 async fn spotify_set_volume(state: &Arc<Mutex<AppState>>, volume: u32, device_id: Option<String>) -> Result<(), String> {
-    let token = state.lock().unwrap().access_token.clone().ok_or("No token")?;
-    let res = spotify_set_volume_internal(&token, volume, device_id.clone()).await?;
-    
-    if res.status() == reqwest::StatusCode::UNAUTHORIZED {
-        if let Ok(new_at) = spotify_refresh_token(state).await {
-            let res = spotify_set_volume_internal(&new_at, volume, device_id).await?;
-            if res.status().is_success() {
-                return Ok(());
-            }
-        }
-    } else if res.status().is_success() {
-        return Ok(());
-    }
-
-    Err(format!("Volume failed with status: {}", res.status()))
+    send_spotify_with_retry(state, "Volume", move |tok| {
+        let dev = device_id.clone();
+        async move { spotify_set_volume_internal(&tok, volume, dev).await }
+    })
+    .await
 }
 
 async fn spotify_skip_internal(access_token: &str, next: bool, device_id: Option<String>) -> Result<reqwest::Response, String> {
-    let client = Client::new();
+    let client = http_client();
     let mut url = if next {
         "https://api.spotify.com/v1/me/player/next".to_string()
     } else {
@@ -1353,21 +1647,11 @@ async fn spotify_skip_internal(access_token: &str, next: bool, device_id: Option
 }
 
 async fn spotify_skip(state: &Arc<Mutex<AppState>>, next: bool, device_id: Option<String>) -> Result<(), String> {
-    let token = state.lock().unwrap().access_token.clone().ok_or("No token")?;
-    let res = spotify_skip_internal(&token, next, device_id.clone()).await?;
-    
-    if res.status() == reqwest::StatusCode::UNAUTHORIZED {
-        if let Ok(new_at) = spotify_refresh_token(state).await {
-            let res = spotify_skip_internal(&new_at, next, device_id).await?;
-            if res.status().is_success() {
-                return Ok(());
-            }
-        }
-    } else if res.status().is_success() {
-        return Ok(());
-    }
-
-    Err(format!("Skip failed with status: {}", res.status()))
+    send_spotify_with_retry(state, "Skip", move |tok| {
+        let dev = device_id.clone();
+        async move { spotify_skip_internal(&tok, next, dev).await }
+    })
+    .await
 }
 
 // --- Tauri Commands ---
@@ -1435,6 +1719,7 @@ fn update_settings(
     }
     
     s.save();
+    broadcast_site_config(&s.site_actions);
     Ok(())
 }
 
@@ -1467,6 +1752,10 @@ async fn start_auth(state: tauri::State<'_, StateWrapper>, client_id: Option<Str
     rand::thread_rng().fill_bytes(&mut random_bytes);
     let verifier = URL_SAFE_NO_PAD.encode(random_bytes);
 
+    let mut state_bytes = [0u8; 16];
+    rand::thread_rng().fill_bytes(&mut state_bytes);
+    let oauth_state = URL_SAFE_NO_PAD.encode(state_bytes);
+
     let mut hasher = Sha256::new();
     hasher.update(verifier.as_bytes());
     let challenge = URL_SAFE_NO_PAD.encode(hasher.finalize());
@@ -1475,12 +1764,13 @@ async fn start_auth(state: tauri::State<'_, StateWrapper>, client_id: Option<Str
         let mut s = state.0.lock().unwrap();
         s.client_id = Some(effective_client_id.clone());
         s.code_verifier = Some(verifier);
+        s.oauth_state = Some(oauth_state.clone());
         s.save();
     }
 
     let auth_url = format!(
-        "https://accounts.spotify.com/authorize?client_id={}&response_type=code&redirect_uri=http://127.0.0.1:8921/callback&scope=user-modify-playback-state%20user-read-playback-state%20user-read-currently-playing&code_challenge_method=S256&code_challenge={}",
-        effective_client_id, challenge
+        "https://accounts.spotify.com/authorize?client_id={}&response_type=code&redirect_uri=http://127.0.0.1:8921/callback&scope=user-modify-playback-state%20user-read-playback-state%20user-read-currently-playing&code_challenge_method=S256&code_challenge={}&state={}",
+        effective_client_id, challenge, oauth_state
     );
     
     open::that(auth_url).map_err(|e| e.to_string())?;
@@ -1519,6 +1809,9 @@ fn get_initial_state(state: tauri::State<StateWrapper>) -> AppState {
 
 #[tauri::command]
 fn open_url(url: String) -> Result<(), String> {
+    if !(url.starts_with("https://") || url.starts_with("http://")) {
+        return Err("Refusing to open non-HTTP(S) URL".into());
+    }
     open::that(url).map_err(|e| e.to_string())
 }
 
@@ -1547,19 +1840,29 @@ async fn get_track_info(state: tauri::State<'_, StateWrapper>) -> Result<serde_j
     Ok(info)
 }
 
-#[tauri::command]
-async fn spotify_play_pause(state: tauri::State<'_, StateWrapper>, play: Option<bool>) -> Result<(), String> {
-    let device_id = {
-        let s = state.0.lock().unwrap();
-        s.current_device_id.clone()
-    };
-
+async fn apply_manual_play_pause(state: &Arc<Mutex<AppState>>, play: Option<bool>) -> Result<(), String> {
     let target_play = match play {
         Some(p) => p,
-        None => !media_is_playing(&state.0).await,
+        None => !media_is_playing(state).await,
     };
 
-    media_control(&state.0, target_play, device_id).await
+    let (device_id, was_ducked) = {
+        let mut s = state.lock().unwrap();
+        s.manual_pause_detected = !target_play;
+        s.app_paused_spotify = false;
+        (s.current_device_id.clone(), s.is_ducked)
+    };
+
+    if !target_play && was_ducked {
+        smooth_unduck_volume(state).await;
+    }
+
+    media_control(state, target_play, device_id).await
+}
+
+#[tauri::command]
+async fn spotify_play_pause(state: tauri::State<'_, StateWrapper>, play: Option<bool>) -> Result<(), String> {
+    apply_manual_play_pause(&state.0, play).await
 }
 
 #[tauri::command]
@@ -1651,6 +1954,7 @@ fn set_site_action(state: tauri::State<'_, StateWrapper>, site: String, action: 
     };
     s.site_actions.insert(site, act);
     s.save();
+    broadcast_site_config(&s.site_actions);
     Ok(())
 }
 
@@ -1669,6 +1973,7 @@ fn set_mic_aware(state: tauri::State<'_, StateWrapper>, enabled: bool, action: S
     s.mic_aware_enabled = enabled;
     s.mic_action = match action.as_str() {
         "pause" => SiteAction::Pause,
+        "ignore" => SiteAction::Ignore,
         _ => SiteAction::Duck,
     };
     s.save();
@@ -1705,20 +2010,16 @@ pub fn run() {
             if event.state() == tauri_plugin_global_shortcut::ShortcutState::Pressed {
                 let state = app.state::<StateWrapper>().0.clone();
                 tauri::async_runtime::spawn(async move {
-                    let device_id = {
-                        let s = state.lock().unwrap();
-                        s.current_device_id.clone()
-                    };
-                    let is_playing = media_is_playing(&state).await;
-                    let _ = media_control(&state, !is_playing, device_id).await;
+                    let _ = apply_manual_play_pause(&state, None).await;
                 });
             }
         }).build())
         .manage(state_wrapper)
         .setup(move |app| {
-            // Handle autostart minimized
+            // Handle autostart minimized only when both launched with --minimized and setting is enabled
             let args: Vec<String> = std::env::args().collect();
-            if args.contains(&"--minimized".to_string()) {
+            let autostart_minimized = state.lock().unwrap().autostart_minimized;
+            if args.contains(&"--minimized".to_string()) && autostart_minimized {
                 if let Some(window) = app.get_webview_window("main") {
                     let _ = window.hide();
                 }
@@ -1764,7 +2065,19 @@ pub fn run() {
                 .menu(&menu)
                 .on_menu_event(|app, event| match event.id.as_ref() {
                     "quit" => {
-                        app.exit(0);
+                        let app_handle = app.clone();
+                        let state = app.state::<StateWrapper>().0.clone();
+                        tauri::async_runtime::spawn(async move {
+                            let was_ducked = {
+                                let s = state.lock().unwrap();
+                                s.save();
+                                s.is_ducked
+                            };
+                            if was_ducked {
+                                smooth_unduck_volume(&state).await;
+                            }
+                            app_handle.exit(0);
+                        });
                     }
                     "show" => {
                         if let Some(window) = app.get_webview_window("main") {
@@ -1776,27 +2089,25 @@ pub fn run() {
                     "toggle_hud" => {
                         if let Some(hud) = app.get_webview_window("mini_hud") {
                             let is_visible = hud.is_visible().unwrap_or(false);
+                            let next_visible = !is_visible;
                             if is_visible {
                                 let _ = hud.hide();
                             } else {
                                 let _ = hud.show();
-                                let _ = hud.set_focus();
                             }
                             let state = app.state::<StateWrapper>().0.clone();
-                            let mut s = state.lock().unwrap();
-                            s.mini_hud_enabled = !is_visible;
-                            s.save();
+                            {
+                                let mut s = state.lock().unwrap();
+                                s.mini_hud_enabled = next_visible;
+                                s.save();
+                            }
+                            let _ = app.emit("mini_hud_toggled", next_visible);
                         }
                     }
                     "play_pause" => {
                         let state = app.state::<StateWrapper>().0.clone();
                         tauri::async_runtime::spawn(async move {
-                            let device_id = {
-                                let s = state.lock().unwrap();
-                                s.current_device_id.clone()
-                            };
-                            let is_playing = media_is_playing(&state).await;
-                            let _ = media_control(&state, !is_playing, device_id).await;
+                            let _ = apply_manual_play_pause(&state, None).await;
                         });
                     }
                     "next" => {
@@ -1844,6 +2155,11 @@ pub fn run() {
                 loop {
                     tokio::time::sleep(std::time::Duration::from_secs(2)).await;
                     let info = get_current_track_info(&state_tray).await;
+                    let is_playing = info["is_playing"].as_bool().unwrap_or(false);
+                    {
+                        let mut s = state_tray.lock().unwrap();
+                        s.last_music_playing = is_playing;
+                    }
                     let title = info["track_name"].as_str().unwrap_or("");
                     let artist = info["artist_name"].as_str().unwrap_or("");
                     if !title.is_empty() {
@@ -1861,11 +2177,19 @@ pub fn run() {
             tauri::async_runtime::spawn(async move {
                 loop {
                     tokio::time::sleep(std::time::Duration::from_secs(60)).await;
+                    let now = current_unix_secs();
                     let mut s = state_recap.lock().unwrap();
+                    if s.recap_week_start == 0 || now.saturating_sub(s.recap_week_start) >= 7 * 86400 {
+                        s.recap_week_start = now;
+                        s.focus_minutes_this_week = 0;
+                        s.music_minutes_this_week = 0;
+                        s.auto_pause_count = 0;
+                        s.save();
+                    }
                     if s.yt_playing {
                         s.focus_minutes_this_week += 1;
                         s.save();
-                    } else {
+                    } else if s.last_music_playing {
                         s.music_minutes_this_week += 1;
                         s.save();
                     }
@@ -1923,8 +2247,9 @@ pub fn run() {
                 start_callback_server(handle_cb, state_cb).await;
             });
 
+            let state_obs = state.clone();
             tauri::async_runtime::spawn(async move {
-                start_obs_server().await;
+                start_obs_server(state_obs).await;
             });
 
             // Re-validate session on startup
@@ -1983,8 +2308,75 @@ pub fn run() {
                     s.save();
                     let _ = app_handle.emit("mini_hud_toggled", false);
                 }
+            } else if let tauri::WindowEvent::Moved(pos) = event {
+                if window.label() == "mini_hud"
+                    && window.is_visible().unwrap_or(false)
+                    && pos.x > -10000
+                    && pos.y > -10000
+                {
+                    let app_handle = window.app_handle();
+                    let state = app_handle.state::<StateWrapper>();
+                    let mut s = state.0.lock().unwrap();
+                    let moved_far = match s.mini_hud_pos {
+                        Some((px, py)) => (px - pos.x).abs() >= 4 || (py - pos.y).abs() >= 4,
+                        None => true,
+                    };
+                    s.mini_hud_pos = Some((pos.x, pos.y));
+                    if moved_far {
+                        s.save();
+                    }
+                }
             }
         })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn domain_matches_exact_and_subdomains_only() {
+        assert!(domain_matches("youtube.com", "youtube.com"));
+        assert!(domain_matches("music.youtube.com", "youtube.com"));
+        assert!(domain_matches("m.twitch.tv", "twitch.tv"));
+        assert!(!domain_matches("myyoutube.com", "youtube.com"));
+        assert!(!domain_matches("notnetflix.com", "netflix.com"));
+    }
+
+    #[test]
+    fn resolve_site_action_prefers_exact_over_parent() {
+        let mut map = HashMap::new();
+        map.insert("youtube.com".to_string(), SiteAction::Pause);
+        map.insert("music.youtube.com".to_string(), SiteAction::Ignore);
+        map.insert("twitch.tv".to_string(), SiteAction::Duck);
+
+        assert_eq!(
+            resolve_site_action(&map, "music.youtube.com"),
+            Some(SiteAction::Ignore)
+        );
+        assert_eq!(
+            resolve_site_action(&map, "www.youtube.com"),
+            Some(SiteAction::Pause)
+        );
+        assert_eq!(
+            resolve_site_action(&map, "clips.twitch.tv"),
+            Some(SiteAction::Duck)
+        );
+        assert_eq!(resolve_site_action(&map, "myyoutube.com"), None);
+    }
+
+    #[test]
+    fn ws_origin_check_allows_extensions_and_obs_only() {
+        assert!(is_allowed_ws_origin("chrome-extension://abcdef123456"));
+        assert!(is_allowed_ws_origin("moz-extension://1234-5678"));
+        assert!(is_allowed_ws_origin("safari-web-extension://uuid"));
+        assert!(is_allowed_ws_origin("http://127.0.0.1:9877"));
+        assert!(is_allowed_ws_origin("http://localhost:9877"));
+
+        assert!(!is_allowed_ws_origin("https://evil.example"));
+        assert!(!is_allowed_ws_origin("http://127.0.0.1:3000"));
+        assert!(!is_allowed_ws_origin(""));
+    }
 }
