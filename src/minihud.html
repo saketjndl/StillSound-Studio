@@ -107,11 +107,11 @@
             display: block;
         }
 
-        /* Vinyl Spinning Album Art Avatar */
+        /* Vinyl Spinning Album Art Avatar (toggleable via album_art_spin) */
         .art-avatar {
             width: 40px;
             height: 40px;
-            border-radius: 50%;
+            border-radius: 10px;
             overflow: hidden;
             background: #202026;
             flex-shrink: 0;
@@ -119,6 +119,11 @@
             pointer-events: none;
             box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
             border: 1px solid rgba(255, 255, 255, 0.1);
+            transition: border-radius 0.25s ease;
+        }
+
+        .capsule.spin-art .art-avatar {
+            border-radius: 50%;
         }
 
         .art-img {
@@ -126,10 +131,14 @@
             height: 100%;
             object-fit: cover;
             opacity: 0;
-            border-radius: 50%;
-            transition: opacity 0.3s ease;
+            border-radius: 10px;
+            transition: opacity 0.3s ease, border-radius 0.25s ease;
             pointer-events: none;
             display: block;
+        }
+
+        .capsule.spin-art .art-img {
+            border-radius: 50%;
         }
 
         .art-img.loaded {
@@ -142,11 +151,11 @@
             to { transform: rotate(360deg); }
         }
 
-        .capsule.is-playing .art-img.loaded {
+        .capsule.spin-art.is-playing .art-img.loaded {
             animation: vinyl-spin 9s linear infinite;
         }
 
-        .capsule:not(.is-playing) .art-img.loaded {
+        .capsule.spin-art:not(.is-playing) .art-img.loaded {
             animation: vinyl-spin 9s linear infinite;
             animation-play-state: paused;
         }
@@ -341,7 +350,7 @@
     </style>
 </head>
 <body>
-    <div class="capsule" id="capsule">
+    <div class="capsule spin-art" id="capsule">
         <div class="art-avatar">
             <img class="art-img" id="art-img" src="" alt="" />
             <div class="art-placeholder" id="art-placeholder">
@@ -584,6 +593,10 @@
         function applyTrackData(data) {
             if (!data) return;
 
+            if (typeof data.album_art_spin === 'boolean') {
+                capsule.classList.toggle('spin-art', data.album_art_spin);
+            }
+
             if (data.track_name && data.track_name.length > 0) {
                 trackTitle.textContent = data.track_name;
                 
@@ -650,6 +663,9 @@
         if (listen) {
             listen('hud_update', (event) => {
                 applyTrackData(event.payload);
+            });
+            listen('hud_spin_changed', (event) => {
+                capsule.classList.toggle('spin-art', !!event.payload);
             });
         }
     </script>

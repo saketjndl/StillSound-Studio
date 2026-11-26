@@ -6,7 +6,7 @@
 
 <p align="center">
   <a href="https://github.com/saketjndl/StillSound-Studio/releases">
-    <img alt="Version" src="https://img.shields.io/badge/version-3.0.0-blue.svg?style=for-the-badge">
+    <img alt="Version" src="https://img.shields.io/badge/version-3.0.1-blue.svg?style=for-the-badge">
   </a>
   <a href="https://github.com/saketjndl/StillSound-Studio/releases">
     <img alt="Downloads" src="https://img.shields.io/github/downloads/saketjndl/StillSound-Studio/total.svg?style=for-the-badge">
@@ -65,6 +65,13 @@ No more manual alt-tabbing, fumbling for media keys during lectures, or losing y
 ---
 
 ## 🚀 Versions & Changelog
+
+### v3.0.1 (Stability, Multi-Browser Sync & Cross-Platform Fix Release)
+- **Sleep/Wake Ghost Sync Eliminated**: Added playback readiness & wake cooldown guards in `content.js`, atomic `debounceTimer` cancellation and `chrome.storage.session`/`tabs.onUpdated` frame cleanup in `background.js`, 2-sample mic wake-up filtering, and 320ms SMTC toggle verification.
+- **Multi-Browser & Linked Status Reliability**: Added 20s WebSocket heartbeats, live bridge-count tracking (`linked` / `linked (N)` / `unlinked` only when 0 browsers remain), cold-wake event queueing so Firefox & Brave run reliably side-by-side, and a 1-click Firefox MV3 host-permissions grant prompt in the extension popup.
+- **Audio Ducking & SMTC Precision**: Removed the 75% ducking floor bug, canceled overlapping duck ramps cleanly, restricted Windows volume control strictly to known music players (never ducking Discord/Zoom/system audio), and added TikTok manifest matching + exact-first subdomain rules.
+- **Cross-Platform & AppImage Fixes**: Fixed macOS window dragging (`data-tauri-drag-region`, `core:window:allow-start-dragging`), transparency (`macOSPrivateApi`), `Info.plist` privacy prompts, `icon.icns`, AppleScript error guards, cross-OS `settings.json` persistence, Linux MPRIS browser filtering, Mini-HUD ACL permissions + Spinning Album Art toggle (`album_art_spin`), and upgraded `@tauri-apps/cli` (`>= 2.12.6`) + icon sizes (`32x32`, `128x128`) for Linux `.AppImage` compliance.
+- **Update & Feedback Polish**: Semver GitHub Release update checker with `.exe`/`.dmg`/`.AppImage` asset matching, dashboard update & "What's New" banners, pre-filled GitHub bug-report links, and monotonic weekly recap rollover.
 
 ### v3.0.0 (The Audio Intelligence & Studio Companion Upgrade)
 - **Smooth Audio Ducking & Fade Engine**: Eliminates abrupt hard-cutting when scrolling social feeds (Twitter/X, Reddit, Instagram). Smoothly ramps music volume down to 20% over a 300ms curve while short-form clips play, and swells back up seamlessly when finished.

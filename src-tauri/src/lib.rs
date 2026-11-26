@@ -157,6 +157,8 @@ pub struct AppState {
     pub mic_paused_or_ducked: bool,
     #[serde(default)]
     pub mini_hud_enabled: bool,
+    #[serde(default = "default_true")]
+    pub album_art_spin: bool,
     #[serde(default)]
     pub mini_hud_pos: Option<(i32, i32)>,
     #[serde(default)]
@@ -227,6 +229,7 @@ impl Default for AppState {
             mic_active: false,
             mic_paused_or_ducked: false,
             mini_hud_enabled: false,
+            album_art_spin: true,
             mini_hud_pos: None,
             site_actions: {
                 let mut map = HashMap::new();
@@ -571,7 +574,7 @@ async fn get_spotify_track_info(state: &Arc<Mutex<AppState>>) -> serde_json::Val
 
 /// Mode-aware track info: returns Spotify or SMTC data depending on sync_mode
 async fn get_current_track_info(state: &Arc<Mutex<AppState>>) -> serde_json::Value {
-    let (mode, yt_playing, app_paused, is_ducked, mic_active, duck_level, bridge_count) = {
+    let (mode, yt_playing, app_paused, is_ducked, mic_active, duck_level, bridge_count, album_art_spin) = {
         let s = state.lock().unwrap();
         (
             s.sync_mode.clone(),
@@ -581,6 +584,7 @@ async fn get_current_track_info(state: &Arc<Mutex<AppState>>) -> serde_json::Val
             s.mic_active,
             s.ducking_level,
             s.active_bridges.len(),
+            s.album_art_spin,
         )
     };
     let mut val = match mode {
@@ -610,6 +614,7 @@ async fn get_current_track_info(state: &Arc<Mutex<AppState>>) -> serde_json::Val
         obj.insert("mic_active".to_string(), serde_json::Value::Bool(mic_active));
         obj.insert("ducking_level".to_string(), serde_json::Value::Number(duck_level.into()));
         obj.insert("active_bridge_count".to_string(), serde_json::Value::Number(bridge_count.into()));
+        obj.insert("album_art_spin".to_string(), serde_json::Value::Bool(album_art_spin));
     }
     val
 }
@@ -1709,6 +1714,7 @@ fn update_settings(
     mic_aware_enabled: Option<bool>,
     mic_action: Option<String>,
     mini_hud_enabled: Option<bool>,
+    album_art_spin: Option<bool>,
 ) -> Result<(), String> {
     use tauri_plugin_autostart::ManagerExt;
     
@@ -1754,7 +1760,11 @@ fn update_settings(
     if let Some(mhe) = mini_hud_enabled {
         s.mini_hud_enabled = mhe;
     }
-    
+    if let Some(aas) = album_art_spin {
+        s.album_art_spin = aas;
+        let _ = app.emit("hud_spin_changed", aas);
+    }
+
     s.save();
     broadcast_site_config(&s.site_actions);
     Ok(())

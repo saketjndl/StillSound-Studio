@@ -40,6 +40,7 @@ const micAwareToggle = document.getElementById('mic-aware-toggle');
 const micActionRow = document.getElementById('mic-action-row');
 const micActionSelector = document.getElementById('mic-action-selector');
 const miniHudToggle = document.getElementById('mini-hud-toggle');
+const spinArtToggle = document.getElementById('spin-art-toggle');
 
 const GITHUB = 'https://github.com/saketjndl/StillSound-Studio';
 
@@ -383,11 +384,12 @@ miniHudToggle.addEventListener('change', (e) => {
     invoke('toggle_mini_hud', { show: e.target.checked }).catch(console.error);
     saveSettings();
 });
+spinArtToggle?.addEventListener('change', saveSettings);
 
 // --- Smart Rewind toggle ---
 smartRewindToggle.addEventListener('change', saveSettings);
 
-let appVersion = '3.0.0';
+let appVersion = '3.0.1';
 let latestUpdateUrl = '';
 
 function isNewerVersion(latest, current) {
@@ -553,7 +555,8 @@ async function saveSettings() {
             smartRewindSeconds: smartRewindSeconds,
             micAwareEnabled: micAwareToggle.checked,
             micAction: currentMicAction,
-            miniHudEnabled: miniHudToggle.checked
+            miniHudEnabled: miniHudToggle.checked,
+            albumArtSpin: spinArtToggle ? spinArtToggle.checked : true
         });
         console.log('[STILLSOUND] Settings saved successfully:', { siteActions, duckingLevel: duckLevelSlider.value });
     } catch (e) {
@@ -659,6 +662,9 @@ window.addEventListener('DOMContentLoaded', async () => {
             });
         }
         miniHudToggle.checked = !!s.mini_hud_enabled;
+        if (spinArtToggle) {
+            spinArtToggle.checked = s.album_art_spin !== false;
+        }
         
         if (s.site_actions) {
             siteActions = s.site_actions;
@@ -896,6 +902,12 @@ listen('sync_event', (ev) => {
 listen('mini_hud_toggled', (ev) => {
     if (miniHudToggle) {
         miniHudToggle.checked = !!ev.payload;
+    }
+});
+
+listen('hud_spin_changed', (ev) => {
+    if (spinArtToggle) {
+        spinArtToggle.checked = !!ev.payload;
     }
 });
 

@@ -52,10 +52,15 @@ jobs:
         with:
           workspaces: './src-tauri -> target'
 
+      - name: Validate macOS Info.plist
+        if: matrix.platform == 'macos-latest'
+        run: plutil -lint src-tauri/Info.plist
+
       - name: Build and Release Tauri app
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          STILLSOUND_CLIENT_ID: ${{ secrets.STILLSOUND_CLIENT_ID }}
         with:
           tagName: ${{ github.ref_name }}
           releaseName: 'StillSound Studio ${{ github.ref_name }}'
@@ -70,7 +75,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           cd browser-extension
-          tar -a -c -f ../StillSound-Extension-v3.0.0.zip *
+          EXT_ZIP="StillSound-Extension-${{ github.ref_name }}.zip"
+          tar -a -c -f "../${EXT_ZIP}" *
           cd ..
-          gh release upload ${{ github.ref_name }} StillSound-Extension-v3.0.0.zip --clobber
+          gh release upload "${{ github.ref_name }}" "${EXT_ZIP}" --clobber
         shell: bash
