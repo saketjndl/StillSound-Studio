@@ -145,6 +145,7 @@ function normalizeDomain(raw) {
 }
 
 function switchTab(tab) {
+    hideTooltip();
     const valid = ['setup', 'console', 'rules', 'settings'];
     if (!valid.includes(tab)) tab = 'console';
     currentTab = tab;
@@ -711,6 +712,76 @@ function updateHudModeExplain() {
         el.textContent = 'Pinned: stays visible cleanly on screen and softens gently when idle.';
     }
 }
+
+// --- Smooth Accordion Controller & Smart Edge-Clamped Tooltips ---
+document.querySelectorAll('.acc-card .acc-head').forEach((btn) => {
+    btn.addEventListener('click', () => {
+        const card = btn.closest('.acc-card');
+        if (!card) return;
+        const willOpen = !card.classList.contains('open');
+        document.querySelectorAll('.acc-card').forEach((other) => {
+            if (other !== card && other.classList.contains('open')) {
+                other.classList.remove('open');
+                other.querySelector('.acc-head')?.setAttribute('aria-expanded', 'false');
+            }
+        });
+        card.classList.toggle('open', willOpen);
+        btn.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+    });
+});
+
+const uiTooltip = document.getElementById('ui-tooltip');
+let activeTipTarget = null;
+
+function showTooltip(target) {
+    if (!uiTooltip || !target) return;
+    const text = target.getAttribute('data-tip');
+    if (!text) return;
+    activeTipTarget = target;
+    uiTooltip.textContent = text;
+    uiTooltip.classList.add('visible');
+    uiTooltip.setAttribute('aria-hidden', 'false');
+
+    const rect = target.getBoundingClientRect();
+    const tipRect = uiTooltip.getBoundingClientRect();
+    const pad = 10;
+
+    let left = rect.left + rect.width / 2 - tipRect.width / 2;
+    left = Math.max(pad, Math.min(window.innerWidth - tipRect.width - pad, left));
+
+    let top = rect.bottom + 7;
+    if (top + tipRect.height > window.innerHeight - pad) {
+        top = Math.max(pad, rect.top - tipRect.height - 7);
+    }
+
+    uiTooltip.style.left = `${Math.round(left)}px`;
+    uiTooltip.style.top = `${Math.round(top)}px`;
+}
+
+function hideTooltip() {
+    activeTipTarget = null;
+    if (!uiTooltip) return;
+    uiTooltip.classList.remove('visible');
+    uiTooltip.setAttribute('aria-hidden', 'true');
+}
+
+document.addEventListener('mouseover', (e) => {
+    const tip = e.target.closest?.('.info-tip');
+    if (tip) showTooltip(tip);
+});
+document.addEventListener('mouseout', (e) => {
+    const tip = e.target.closest?.('.info-tip');
+    if (tip && tip === activeTipTarget) hideTooltip();
+});
+document.addEventListener('focusin', (e) => {
+    const tip = e.target.closest?.('.info-tip');
+    if (tip) showTooltip(tip);
+});
+document.addEventListener('focusout', (e) => {
+    const tip = e.target.closest?.('.info-tip');
+    if (tip && tip === activeTipTarget) hideTooltip();
+});
+document.querySelectorAll('.view').forEach((v) => v.addEventListener('scroll', hideTooltip));
 
 document.getElementById('reset-recap-btn')?.addEventListener('click', async () => {
     await invoke('reset_weekly_recap').catch(console.error);

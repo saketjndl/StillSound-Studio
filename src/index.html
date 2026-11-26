@@ -154,7 +154,10 @@
                         </div>
                     </div>
                     <div class="track-info">
-                        <div class="track-name" id="track-name">Not Playing</div>
+                        <div class="track-title-line">
+                            <div class="track-name" id="track-name">Not Playing</div>
+                            <span class="info-tip" tabindex="0" data-tip="Shows your active music player and live sync state. Playback automatically pauses for long videos and ducks softly on social feeds.">i</span>
+                        </div>
                         <div class="track-artist" id="track-artist">Open Spotify or your media player</div>
                         <div class="status-row-small">
                             <span class="state-chip" id="live-state-pill" style="display:none"></span>
@@ -181,7 +184,7 @@
             <div class="ctrl-section">
                 <div class="ctrl-row">
                     <div class="ctrl-info">
-                        <span class="ctrl-label">Auto Sync</span>
+                        <span class="ctrl-label label-with-tip">Auto Sync <span class="info-tip" tabindex="0" data-tip="Master switch for automatic playback control. When on, videos and unmuted calls automatically pause or lower your music.">i</span></span>
                         <span class="ctrl-desc" id="sync-status-desc">Monitoring videos &amp; calls</span>
                     </div>
                     <label class="toggle">
@@ -190,7 +193,7 @@
                     </label>
                 </div>
                 <div class="snooze-bar" id="snooze-bar">
-                    <span class="snooze-label">Quick Snooze</span>
+                    <span class="snooze-label label-with-tip">Quick Snooze <span class="info-tip" tabindex="0" data-tip="Temporarily pause StillSound for 15m, 1h, or until restart without forgetting to turn Auto Sync back on.">i</span></span>
                     <div class="snooze-chips" id="snooze-chips">
                         <button class="chip-btn" data-mins="15" type="button">15m</button>
                         <button class="chip-btn" data-mins="60" type="button">1h</button>
@@ -203,7 +206,7 @@
             <!-- Quick Mode & Live Mix -->
             <div class="ctrl-section">
                 <div class="ctrl-row" style="margin-bottom: 10px;">
-                    <span class="ctrl-label">Control Engine</span>
+                    <span class="ctrl-label label-with-tip">Control Engine <span class="info-tip" tabindex="0" data-tip="Universal controls Spotify, Apple Music, or VLC offline via OS media keys. Spotify API adds cloud volume &amp; device switching (requires login).">i</span></span>
                     <div class="segmented-control" id="dash-mode-pills">
                         <button class="seg-btn active" data-mode="universal" type="button">Universal</button>
                         <button class="seg-btn" data-mode="spotify" type="button">Spotify API</button>
@@ -211,14 +214,14 @@
                 </div>
                 <div id="vol-section" style="display:none">
                     <div class="ctrl-row">
-                        <span class="ctrl-desc">Spotify Volume</span>
+                        <span class="ctrl-desc label-with-tip">Spotify Volume <span class="info-tip" tabindex="0" data-tip="Controls playback volume directly on your active Spotify Connect device.">i</span></span>
                         <span class="ctrl-val" id="vol-num">50%</span>
                     </div>
                     <input type="range" id="vol-slider" min="0" max="100" value="50">
                 </div>
                 <div id="dash-duck-row">
                     <div class="ctrl-row">
-                        <span class="ctrl-desc">Feed Duck Level</span>
+                        <span class="ctrl-desc label-with-tip">Feed Duck Level <span class="info-tip" tabindex="0" data-tip="Target volume (%) when scrolling social video feeds like X, Reddit, Instagram, or TikTok.">i</span></span>
                         <span class="ctrl-val" id="dash-duck-num">20%</span>
                     </div>
                     <input type="range" id="dash-duck-slider" min="5" max="60" value="20" step="5">
@@ -228,13 +231,14 @@
             <!-- Weekly Focus Recap -->
             <div class="ctrl-section" id="recap-section">
                 <div class="ctrl-row" style="margin-bottom: 8px;">
-                    <span class="ctrl-label" style="display: flex; align-items: center; gap: 6px;">
+                    <span class="ctrl-label label-with-tip" style="display: flex; align-items: center; gap: 6px;">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1ed760" stroke-width="2.2">
                             <circle cx="12" cy="12" r="10"/>
                             <circle cx="12" cy="12" r="6"/>
                             <circle cx="12" cy="12" r="2"/>
                         </svg>
                         <span>Weekly Focus Recap</span>
+                        <span class="info-tip" tabindex="0" data-tip="Rolling 7-day tracker: Focus Video counts study &amp; non-social clips while active; Music Time counts actual music playback; Alt-Tabs Saved tallies automatic pauses.">i</span>
                     </span>
                     <div style="display: flex; align-items: center; gap: 6px;">
                         <span class="ctrl-desc" style="font-size: 10px; color: #2fcc6b;">7-day live</span>
@@ -260,11 +264,11 @@
             <!-- Connections -->
             <div class="ctrl-section">
                 <div class="conn-row">
-                    <span class="conn-name" id="media-conn-name">Media Player</span>
+                    <span class="conn-name label-with-tip"><span id="media-conn-name">Media Player</span> <span class="info-tip" tabindex="0" data-tip="Shows whether StillSound is bound to your desktop media session (Universal) or Spotify Cloud API.">i</span></span>
                     <span class="conn-pill on" id="p-spotify">active</span>
                 </div>
                 <div class="conn-row">
-                    <span class="conn-name">Extension <span id="ext-clients-label" class="ext-clients"></span></span>
+                    <span class="conn-name label-with-tip">Extension <span id="ext-clients-label" class="ext-clients"></span> <span class="info-tip" tabindex="0" data-tip="Live browser bridge status. Multiple browsers (e.g. Brave + Firefox) sync together and music only resumes once all videos stop.">i</span></span>
                     <span class="conn-pill" id="p-ext">unlinked</span>
                 </div>
                 <div id="ext-help" class="note" style="margin-top: 10px; font-size: 10px;">
@@ -293,7 +297,7 @@
         <main class="view" id="v-rules" style="display:none">
             <div class="ctrl-section" style="padding: 12px;">
                 <div class="ctrl-row" style="margin-bottom: 8px;">
-                    <span class="ctrl-label">Quick Presets</span>
+                    <span class="ctrl-label label-with-tip">Quick Presets <span class="info-tip" tabindex="0" data-tip="Study: pauses all videos &amp; social feeds. Chill: pauses streaming/lectures, gently ducks social clips. Meeting: ignores social clips, pauses calls &amp; videos.">i</span></span>
                     <div class="preset-bar" id="preset-bar">
                         <button class="chip-btn" data-preset="study" type="button">Study</button>
                         <button class="chip-btn" data-preset="chill" type="button">Chill</button>
@@ -303,6 +307,7 @@
                 <div class="input-row">
                     <input type="text" class="text-input compact" id="custom-domain-input" placeholder="Add domain (e.g. bbc.co.uk)" spellcheck="false" autocomplete="off">
                     <button class="chip-btn primary" id="btn-add-domain" type="button">+ Add</button>
+                    <span class="info-tip" tabindex="0" data-tip="Add any site domain. Subdomains inherit their parent rule unless overridden explicitly.">i</span>
                 </div>
                 <input type="text" class="text-input compact" id="site-search" placeholder="Filter sites..." style="margin-top: 8px;" spellcheck="false" autocomplete="off">
             </div>
@@ -314,279 +319,293 @@
             </div>
         </main>
 
-        <!-- SETTINGS (Collapsible Descriptive Accordions) -->
+        <!-- SETTINGS (Smooth Grid Accordions) -->
         <main class="view" id="v-settings" style="display:none">
             <!-- 1. Audio, Ducking & Calls -->
-            <details class="acc-card" open>
-                <summary class="acc-head">
-                    <div class="acc-title-wrap">
+            <div class="acc-card open" data-acc="audio">
+                <button class="acc-head" type="button" aria-expanded="true">
+                    <div class="acc-top">
                         <span class="acc-title">Audio, Ducking &amp; Calls</span>
-                        <span class="acc-sub">Ducking level · Pause rewind · Call mic</span>
-                    </div>
-                    <div class="acc-right">
-                        <span class="acc-pill" id="acc-audio-summary">Duck 20%</span>
-                        <svg class="acc-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                            <path d="M6 9l6 6 6-6"/>
-                        </svg>
-                    </div>
-                </summary>
-                <div class="acc-body">
-                    <div class="ctrl-row" style="margin-bottom: 8px;">
-                        <div class="ctrl-info">
-                            <span class="ctrl-label" style="display: flex; align-items: center; gap: 6px;">
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ffaa00" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round">
-                                    <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
-                                    <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
-                                    <path d="M19.07 4.93a10 10 0 0 1 0 14.14" opacity="0.45" />
-                                </svg>
-                                <span>Audio Ducking &amp; Fade</span>
-                            </span>
-                            <span class="ctrl-desc">Softly lowers music during short social feed clips instead of pausing abruptly.</span>
+                        <div class="acc-right">
+                            <span class="acc-pill" id="acc-audio-summary">Duck 20%</span>
+                            <svg class="acc-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                                <path d="M6 9l6 6 6-6"/>
+                            </svg>
                         </div>
-                        <span class="ctrl-val" id="duck-level-num">20%</span>
                     </div>
-                    <input type="range" id="duck-level-slider" min="5" max="60" value="20" step="5">
-                    <div class="range-ticks">
-                        <span>Whisper (5%)</span>
-                        <span>Soft (20%)</span>
-                        <span>Audible (60%)</span>
-                    </div>
-
-                    <div class="sep" style="margin: 14px 0 12px;"></div>
-
-                    <div class="ctrl-row">
-                        <div class="ctrl-info">
-                            <span class="ctrl-label">Smart Rewind on Resume</span>
-                            <span class="ctrl-desc">Steps tracks back slightly after long pauses so you never miss dialogue.</span>
-                        </div>
-                        <label class="toggle">
-                            <input type="checkbox" id="smart-rewind-toggle" checked>
-                            <span class="toggle-track"></span>
-                        </label>
-                    </div>
-                    <div class="sub-row-stack" id="rewind-config-row">
-                        <div class="ctrl-row">
-                            <span class="sub-label">Rewind step</span>
-                            <div class="segmented-control" id="rewind-secs-selector">
-                                <button class="seg-btn" data-secs="3" type="button">3s</button>
-                                <button class="seg-btn active" data-secs="5" type="button">5s</button>
-                                <button class="seg-btn" data-secs="10" type="button">10s</button>
-                                <button class="seg-btn" data-secs="15" type="button">15s</button>
+                    <span class="acc-sub">Ducking level · Smart rewind · Mic call detection</span>
+                </button>
+                <div class="acc-collapse">
+                    <div class="acc-body">
+                        <div class="acc-inner">
+                            <div class="ctrl-row" style="margin-bottom: 8px;">
+                                <div class="ctrl-info">
+                                    <span class="ctrl-label label-with-tip" style="display: flex; align-items: center; gap: 6px;">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ffaa00" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round">
+                                            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+                                            <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
+                                            <path d="M19.07 4.93a10 10 0 0 1 0 14.14" opacity="0.45" />
+                                        </svg>
+                                        <span>Audio Ducking &amp; Fade</span>
+                                        <span class="info-tip" tabindex="0" data-tip="Targets only your music player (never calls or browser video) and smoothly ramps down during social clips.">i</span>
+                                    </span>
+                                    <span class="ctrl-desc">Softly lowers music during short social clips.</span>
+                                </div>
+                                <span class="ctrl-val" id="duck-level-num">20%</span>
                             </div>
-                        </div>
-                        <div class="ctrl-row">
-                            <span class="sub-label">Min pause time</span>
-                            <div class="segmented-control" id="rewind-thresh-selector">
-                                <button class="seg-btn" data-thresh="10" type="button">10s</button>
-                                <button class="seg-btn active" data-thresh="30" type="button">30s</button>
-                                <button class="seg-btn" data-thresh="60" type="button">60s</button>
+                            <input type="range" id="duck-level-slider" min="5" max="60" value="20" step="5">
+                            <div class="range-ticks">
+                                <span>Whisper (5%)</span>
+                                <span>Soft (20%)</span>
+                                <span>Audible (60%)</span>
                             </div>
-                        </div>
-                    </div>
 
-                    <div class="sep" style="margin: 14px 0 12px;"></div>
+                            <div class="sep" style="margin: 14px 0 12px;"></div>
 
-                    <div class="ctrl-row">
-                        <div class="ctrl-info">
-                            <span class="ctrl-label">Mic / Call-Aware Mode</span>
-                            <span class="ctrl-desc">Watches your mic on Discord, Zoom, and Meet to duck or pause music automatically.</span>
-                        </div>
-                        <label class="toggle">
-                            <input type="checkbox" id="mic-aware-toggle" checked>
-                            <span class="toggle-track"></span>
-                        </label>
-                    </div>
+                            <div class="ctrl-row">
+                                <div class="ctrl-info">
+                                    <span class="ctrl-label label-with-tip">Smart Rewind on Resume <span class="info-tip" tabindex="0" data-tip="Automatically steps music/podcasts backward when a pause exceeds the minimum duration below (requires player seek support).">i</span></span>
+                                    <span class="ctrl-desc">Rewinds slightly after long video pauses.</span>
+                                </div>
+                                <label class="toggle">
+                                    <input type="checkbox" id="smart-rewind-toggle" checked>
+                                    <span class="toggle-track"></span>
+                                </label>
+                            </div>
+                            <div class="sub-row-stack" id="rewind-config-row">
+                                <div class="ctrl-row">
+                                    <span class="sub-label">Rewind step</span>
+                                    <div class="segmented-control" id="rewind-secs-selector">
+                                        <button class="seg-btn" data-secs="3" type="button">3s</button>
+                                        <button class="seg-btn active" data-secs="5" type="button">5s</button>
+                                        <button class="seg-btn" data-secs="10" type="button">10s</button>
+                                        <button class="seg-btn" data-secs="15" type="button">15s</button>
+                                    </div>
+                                </div>
+                                <div class="ctrl-row">
+                                    <span class="sub-label">Min pause time</span>
+                                    <div class="segmented-control" id="rewind-thresh-selector">
+                                        <button class="seg-btn" data-thresh="10" type="button">10s</button>
+                                        <button class="seg-btn active" data-thresh="30" type="button">30s</button>
+                                        <button class="seg-btn" data-thresh="60" type="button">60s</button>
+                                    </div>
+                                </div>
+                            </div>
 
-                    <div class="ctrl-row sub-row" id="mic-action-row">
-                        <span class="sub-label">Action when mic activates</span>
-                        <div class="segmented-control" id="mic-action-selector">
-                            <button class="seg-btn active" data-action="duck" type="button">Duck</button>
-                            <button class="seg-btn" data-action="pause" type="button">Pause</button>
-                            <button class="seg-btn" data-action="ignore" type="button">Ignore</button>
+                            <div class="sep" style="margin: 14px 0 12px;"></div>
+
+                            <div class="ctrl-row">
+                                <div class="ctrl-info">
+                                    <span class="ctrl-label label-with-tip">Mic / Call-Aware Mode <span class="info-tip" tabindex="0" data-tip="Requires 1.2s of active microphone stream (Windows) before acting so brief wake glitches don't pause music.">i</span></span>
+                                    <span class="ctrl-desc">Detects mic activity in Discord, Zoom &amp; Meet.</span>
+                                </div>
+                                <label class="toggle">
+                                    <input type="checkbox" id="mic-aware-toggle" checked>
+                                    <span class="toggle-track"></span>
+                                </label>
+                            </div>
+
+                            <div class="ctrl-row sub-row" id="mic-action-row">
+                                <span class="sub-label">When mic activates</span>
+                                <div class="segmented-control" id="mic-action-selector">
+                                    <button class="seg-btn active" data-action="duck" type="button">Duck</button>
+                                    <button class="seg-btn" data-action="pause" type="button">Pause</button>
+                                    <button class="seg-btn" data-action="ignore" type="button">Ignore</button>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
-            </details>
+            </div>
 
             <!-- 2. Mini-HUD & Visuals -->
-            <details class="acc-card">
-                <summary class="acc-head">
-                    <div class="acc-title-wrap">
+            <div class="acc-card" data-acc="hud">
+                <button class="acc-head" type="button" aria-expanded="false">
+                    <div class="acc-top">
                         <span class="acc-title">Mini-HUD &amp; Visuals</span>
-                        <span class="acc-sub">Floating capsule · Peek mode · Cover spin</span>
-                    </div>
-                    <div class="acc-right">
-                        <span class="acc-pill" id="acc-hud-summary">Off · Pinned</span>
-                        <svg class="acc-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                            <path d="M6 9l6 6 6-6"/>
-                        </svg>
-                    </div>
-                </summary>
-                <div class="acc-body">
-                    <div class="ctrl-row">
-                        <div class="ctrl-info">
-                            <span class="ctrl-label">Floating Mini-HUD</span>
-                            <span class="ctrl-desc">Always-on-top compact pill showing now playing &amp; pause/duck status.</span>
+                        <div class="acc-right">
+                            <span class="acc-pill" id="acc-hud-summary">Off · Pinned</span>
+                            <svg class="acc-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                                <path d="M6 9l6 6 6-6"/>
+                            </svg>
                         </div>
-                        <label class="toggle">
-                            <input type="checkbox" id="mini-hud-toggle">
-                            <span class="toggle-track"></span>
-                        </label>
                     </div>
+                    <span class="acc-sub">Floating capsule · Visibility mode · Cover spin</span>
+                </button>
+                <div class="acc-collapse">
+                    <div class="acc-body">
+                        <div class="acc-inner">
+                            <div class="ctrl-row">
+                                <div class="ctrl-info">
+                                    <span class="ctrl-label label-with-tip">Floating Mini-HUD <span class="info-tip" tabindex="0" data-tip="Non-activating desktop overlay pill so you always know when StillSound paused/ducked a song without leaving full-screen apps.">i</span></span>
+                                    <span class="ctrl-desc">Always-on-top compact desktop capsule.</span>
+                                </div>
+                                <label class="toggle">
+                                    <input type="checkbox" id="mini-hud-toggle">
+                                    <span class="toggle-track"></span>
+                                </label>
+                            </div>
 
-                    <div class="ctrl-row sub-row" id="hud-mode-row" style="margin-top: 10px;">
-                        <span class="sub-label">Visibility behavior</span>
-                        <div class="segmented-control" id="hud-mode-selector">
-                            <button class="seg-btn active" data-hud-mode="pinned" type="button">Pinned</button>
-                            <button class="seg-btn" data-hud-mode="peek" type="button">Peek</button>
-                            <button class="seg-btn" data-hud-mode="autohide" type="button">Hide</button>
-                        </div>
-                    </div>
-                    <p class="mode-explain" id="hud-mode-explain">Pinned: stays visible cleanly on screen and dims gently when idle.</p>
+                            <div class="ctrl-row sub-row" id="hud-mode-row" style="margin-top: 10px;">
+                                <span class="sub-label">Visibility behavior</span>
+                                <div class="segmented-control" id="hud-mode-selector">
+                                    <button class="seg-btn active" data-hud-mode="pinned" type="button">Pinned</button>
+                                    <button class="seg-btn" data-hud-mode="peek" type="button">Peek</button>
+                                    <button class="seg-btn" data-hud-mode="autohide" type="button">Hide</button>
+                                </div>
+                            </div>
+                            <p class="mode-explain" id="hud-mode-explain">Pinned: stays visible cleanly on screen and dims gently when idle.</p>
 
-                    <div class="ctrl-row" style="margin-top: 14px;">
-                        <div class="ctrl-info">
-                            <span class="ctrl-label">Spinning Album Art</span>
-                            <span class="ctrl-desc">Rotates cover art like vinyl while playing; turn off for calm lecture viewing.</span>
-                        </div>
-                        <label class="toggle">
-                            <input type="checkbox" id="spin-art-toggle" checked>
-                            <span class="toggle-track"></span>
-                        </label>
-                    </div>
+                            <div class="ctrl-row" style="margin-top: 14px;">
+                                <div class="ctrl-info">
+                                    <span class="ctrl-label label-with-tip">Spinning Album Art <span class="info-tip" tabindex="0" data-tip="Disabling switches the Mini-HUD thumbnail to a still rounded square so peripheral motion won't distract during lectures.">i</span></span>
+                                    <span class="ctrl-desc">Turn off for calm, static art during lectures.</span>
+                                </div>
+                                <label class="toggle">
+                                    <input type="checkbox" id="spin-art-toggle" checked>
+                                    <span class="toggle-track"></span>
+                                </label>
+                            </div>
 
-                    <div class="ctrl-row" style="margin-top: 14px;">
-                        <div class="ctrl-info">
-                            <span class="ctrl-label">Lock HUD Position</span>
-                            <span class="ctrl-desc">Freezes capsule position; unlock anytime to drag the pill elsewhere.</span>
+                            <div class="ctrl-row" style="margin-top: 14px;">
+                                <div class="ctrl-info">
+                                    <span class="ctrl-label label-with-tip">Lock HUD Position <span class="info-tip" tabindex="0" data-tip="When unlocked, click anywhere on the Mini-HUD capsule (outside buttons) to drag it. Lock once placed.">i</span></span>
+                                    <span class="ctrl-desc">Freezes capsule placement once positioned.</span>
+                                </div>
+                                <label class="toggle">
+                                    <input type="checkbox" id="hud-lock-toggle">
+                                    <span class="toggle-track"></span>
+                                </label>
+                            </div>
                         </div>
-                        <label class="toggle">
-                            <input type="checkbox" id="hud-lock-toggle">
-                            <span class="toggle-track"></span>
-                        </label>
                     </div>
                 </div>
-            </details>
+            </div>
 
             <!-- 3. System, Engine & About -->
-            <details class="acc-card">
-                <summary class="acc-head">
-                    <div class="acc-title-wrap">
+            <div class="acc-card" data-acc="system">
+                <button class="acc-head" type="button" aria-expanded="false">
+                    <div class="acc-top">
                         <span class="acc-title">System, Engine &amp; Shortcuts</span>
-                        <span class="acc-sub">Engine · Autostart · OBS · Updates</span>
-                    </div>
-                    <div class="acc-right">
-                        <span class="acc-pill" id="acc-sys-summary">v3.0.1</span>
-                        <svg class="acc-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                            <path d="M6 9l6 6 6-6"/>
-                        </svg>
-                    </div>
-                </summary>
-                <div class="acc-body">
-                    <div class="ctrl-row" style="margin-bottom: 8px;">
-                        <div class="ctrl-info">
-                            <span class="ctrl-label">Playback Control Engine</span>
-                            <span class="ctrl-desc">Universal controls any desktop player locally; Spotify API adds cloud volume &amp; devices.</span>
+                        <div class="acc-right">
+                            <span class="acc-pill" id="acc-sys-summary">v3.0.1</span>
+                            <svg class="acc-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                                <path d="M6 9l6 6 6-6"/>
+                            </svg>
                         </div>
                     </div>
-                    <div class="mode-selector" id="mode-selector">
-                        <button class="mode-btn active" data-mode="universal" id="mode-universal" type="button">
-                            <span class="mode-icon">
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                    <circle cx="12" cy="12" r="10"/>
-                                    <line x1="2" y1="12" x2="22" y2="12"/>
-                                    <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
-                                </svg>
-                            </span>
-                            <span class="mode-name">Universal</span>
-                            <span class="mode-desc">Offline · Zero setup</span>
-                        </button>
-                        <button class="mode-btn" data-mode="spotify" id="mode-spotify" type="button">
-                            <span class="mode-icon">
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                    <path d="M9 18V5l12-2v13"/>
-                                    <circle cx="6" cy="18" r="3"/>
-                                    <circle cx="18" cy="16" r="3"/>
-                                </svg>
-                            </span>
-                            <span class="mode-name">Spotify API</span>
-                            <span class="mode-desc">Cloud volume &amp; devices</span>
-                        </button>
-                    </div>
+                    <span class="acc-sub">Control engine · Autostart · OBS overlay · Updates</span>
+                </button>
+                <div class="acc-collapse">
+                    <div class="acc-body">
+                        <div class="acc-inner">
+                            <div class="ctrl-row" style="margin-bottom: 8px;">
+                                <div class="ctrl-info">
+                                    <span class="ctrl-label label-with-tip">Playback Control Engine <span class="info-tip" tabindex="0" data-tip="Universal controls native players offline via OS APIs. Spotify API uses your Spotify login for multi-device handoff &amp; cloud volume.">i</span></span>
+                                    <span class="ctrl-desc">Choose local OS media control or Spotify Cloud API.</span>
+                                </div>
+                            </div>
+                            <div class="mode-selector" id="mode-selector">
+                                <button class="mode-btn active" data-mode="universal" id="mode-universal" type="button">
+                                    <span class="mode-icon">
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                            <circle cx="12" cy="12" r="10"/>
+                                            <line x1="2" y1="12" x2="22" y2="12"/>
+                                            <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+                                        </svg>
+                                    </span>
+                                    <span class="mode-name">Universal</span>
+                                    <span class="mode-desc">Offline · Zero setup</span>
+                                </button>
+                                <button class="mode-btn" data-mode="spotify" id="mode-spotify" type="button">
+                                    <span class="mode-icon">
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                            <path d="M9 18V5l12-2v13"/>
+                                            <circle cx="6" cy="18" r="3"/>
+                                            <circle cx="18" cy="16" r="3"/>
+                                        </svg>
+                                    </span>
+                                    <span class="mode-name">Spotify API</span>
+                                    <span class="mode-desc">Cloud volume &amp; devices</span>
+                                </button>
+                            </div>
 
-                    <div class="sep" style="margin: 14px 0 12px;"></div>
+                            <div class="sep" style="margin: 14px 0 12px;"></div>
 
-                    <div class="ctrl-row">
-                        <div class="ctrl-info">
-                            <span class="ctrl-label">Launch at Startup</span>
-                            <span class="ctrl-desc">Starts StillSound automatically when you sign in.</span>
-                        </div>
-                        <label class="toggle">
-                            <input type="checkbox" id="autostart-toggle">
-                            <span class="toggle-track"></span>
-                        </label>
-                    </div>
-                    <div class="ctrl-row" style="margin-top: 12px;">
-                        <div class="ctrl-info">
-                            <span class="ctrl-label">Start Minimized to Tray</span>
-                            <span class="ctrl-desc">Keeps window hidden in system tray during boot autostart.</span>
-                        </div>
-                        <label class="toggle">
-                            <input type="checkbox" id="autostart-minimized-toggle">
-                            <span class="toggle-track"></span>
-                        </label>
-                    </div>
-                    <div class="ctrl-row" style="margin-top: 12px;">
-                        <div class="ctrl-info">
-                            <span class="ctrl-label">Minimize to Tray</span>
-                            <span class="ctrl-desc">Tucks console into the system tray instead of taskbar.</span>
-                        </div>
-                        <label class="toggle">
-                            <input type="checkbox" id="minimize-to-tray-toggle">
-                            <span class="toggle-track"></span>
-                        </label>
-                    </div>
+                            <div class="ctrl-row">
+                                <div class="ctrl-info">
+                                    <span class="ctrl-label label-with-tip">Launch at Startup <span class="info-tip" tabindex="0" data-tip="Registers StillSound to start automatically when you sign in to your PC.">i</span></span>
+                                    <span class="ctrl-desc">Starts StillSound automatically on boot.</span>
+                                </div>
+                                <label class="toggle">
+                                    <input type="checkbox" id="autostart-toggle">
+                                    <span class="toggle-track"></span>
+                                </label>
+                            </div>
+                            <div class="ctrl-row" style="margin-top: 12px;">
+                                <div class="ctrl-info">
+                                    <span class="ctrl-label">Start Minimized to Tray</span>
+                                    <span class="ctrl-desc">Keeps console hidden during boot autostart.</span>
+                                </div>
+                                <label class="toggle">
+                                    <input type="checkbox" id="autostart-minimized-toggle">
+                                    <span class="toggle-track"></span>
+                                </label>
+                            </div>
+                            <div class="ctrl-row" style="margin-top: 12px;">
+                                <div class="ctrl-info">
+                                    <span class="ctrl-label">Minimize to Tray</span>
+                                    <span class="ctrl-desc">Tucks console into system tray instead of taskbar.</span>
+                                </div>
+                                <label class="toggle">
+                                    <input type="checkbox" id="minimize-to-tray-toggle">
+                                    <span class="toggle-track"></span>
+                                </label>
+                            </div>
 
-                    <div class="sep" style="margin: 14px 0 12px;"></div>
+                            <div class="sep" style="margin: 14px 0 12px;"></div>
 
-                    <div class="field" style="margin-bottom: 0;">
-                        <label style="margin-bottom: 4px;">OBS Streamer Overlay <small>— add as Browser Source in OBS/Streamlabs</small></label>
-                        <div class="copy-row">
-                            <code>http://127.0.0.1:9877/overlay</code>
-                            <span class="copy-btn" id="copy-obs-uri">Copy</span>
-                        </div>
-                    </div>
+                            <div class="field" style="margin-bottom: 0;">
+                                <label class="label-with-tip" style="margin-bottom: 4px;">OBS Streamer Overlay <span class="info-tip" tabindex="0" data-tip="Add this URL as a Browser Source (transparent background) in OBS or Streamlabs to show live track &amp; pause/duck state.">i</span></label>
+                                <div class="copy-row">
+                                    <code>http://127.0.0.1:9877/overlay</code>
+                                    <span class="copy-btn" id="copy-obs-uri">Copy</span>
+                                </div>
+                            </div>
 
-                    <div class="sep" style="margin: 14px 0 12px;"></div>
+                            <div class="sep" style="margin: 14px 0 12px;"></div>
 
-                    <div class="ctrl-row">
-                        <div class="ctrl-info">
-                            <span class="ctrl-label">Updates</span>
-                            <span id="update-status" class="ctrl-desc">You are on the latest version</span>
+                            <div class="ctrl-row">
+                                <div class="ctrl-info">
+                                    <span class="ctrl-label">Updates</span>
+                                    <span id="update-status" class="ctrl-desc">You are on the latest version</span>
+                                </div>
+                                <button class="btn-flat" id="check-updates" type="button"
+                                    style="width: auto; margin: 0; padding: 6px 12px;">Check</button>
+                            </div>
+                            <div class="ctrl-row" style="margin-top: 12px;">
+                                <div class="ctrl-info">
+                                    <span class="ctrl-label">Feedback &amp; Bug Report</span>
+                                    <span class="ctrl-desc">Pre-fills OS, version &amp; mode on GitHub Issues.</span>
+                                </div>
+                                <button class="btn-flat" id="open-feedback" type="button"
+                                    style="width: auto; margin: 0; padding: 6px 12px;">Report ↗</button>
+                            </div>
+                            <div class="ctrl-row" style="margin-top: 10px;">
+                                <span class="ctrl-desc label-with-tip">Global Hotkeys <span class="info-tip" tabindex="0" data-tip="Press Ctrl+Alt+P or Alt+Shift+P anywhere on your system to manually toggle music Play/Pause.">i</span></span>
+                                <span class="ctrl-val">Ctrl+Alt+P · Alt+Shift+P</span>
+                            </div>
                         </div>
-                        <button class="btn-flat" id="check-updates" type="button"
-                            style="width: auto; margin: 0; padding: 6px 12px;">Check</button>
-                    </div>
-                    <div class="ctrl-row" style="margin-top: 12px;">
-                        <div class="ctrl-info">
-                            <span class="ctrl-label">Feedback &amp; Bug Report</span>
-                            <span class="ctrl-desc">Pre-fills OS, version &amp; mode on GitHub Issues.</span>
-                        </div>
-                        <button class="btn-flat" id="open-feedback" type="button"
-                            style="width: auto; margin: 0; padding: 6px 12px;">Report ↗</button>
-                    </div>
-                    <div class="ctrl-row" style="margin-top: 10px;">
-                        <span class="ctrl-desc">Global Play/Pause Hotkeys</span>
-                        <span class="ctrl-val">Ctrl+Alt+P · Alt+Shift+P</span>
                     </div>
                 </div>
-            </details>
+            </div>
 
             <div class="footer">
                 <div class="footer-ver">StillSound Studio v3.0.1</div>
             </div>
         </main>
     </div>
+    <div class="ui-tooltip" id="ui-tooltip" role="tooltip" aria-hidden="true"></div>
     <script src="main.js" type="module"></script>
 </body>
 
