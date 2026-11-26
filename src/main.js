@@ -161,6 +161,9 @@ function switchTab(tab) {
             btn.classList.toggle('active', btn.dataset.tab === tab);
         });
     }
+    if (winSettingsBtn) {
+        winSettingsBtn.style.display = showTabs ? 'none' : 'flex';
+    }
 
     if (tab === 'console') {
         updateDashForMode(currentMode);
@@ -467,6 +470,7 @@ document.getElementById('mode-spotify')?.addEventListener('click', () => setSync
 function updateRewindUiVisibility() {
     if (rewindConfigRow) {
         rewindConfigRow.style.display = smartRewindToggle.checked ? 'flex' : 'none';
+        rewindConfigRow.style.flexDirection = 'column';
     }
 }
 
