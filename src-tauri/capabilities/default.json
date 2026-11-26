@@ -1,12 +1,14 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Capability for the main window",
+  "description": "Capability for main and Mini-HUD windows",
   "windows": [
-    "main"
+    "main",
+    "mini_hud"
   ],
   "permissions": [
     "core:default",
+    "core:window:allow-start-dragging",
     "shell:allow-open"
   ]
 }

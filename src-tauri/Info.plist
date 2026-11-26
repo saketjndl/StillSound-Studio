@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>NSAppleEventsUsageDescription</key>
+    <string>StillSound Studio uses Apple Events to pause, resume, and smoothly adjust volume on Spotify or Apple Music when videos or voice calls are active.</string>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>StillSound Studio optionally checks whether your microphone is active during voice calls so it can pause or duck music automatically.</string>
+</dict>
+</plist>

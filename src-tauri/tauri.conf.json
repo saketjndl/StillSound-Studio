@@ -8,6 +8,7 @@
   },
   "app": {
     "withGlobalTauri": true,
+    "macOSPrivateApi": true,
     "windows": [
       {
         "label": "main",
@@ -50,8 +51,14 @@
       "icons/128x128.png",
       "icons/128x128@2x.png",
       "icons/icon.ico",
+      "icons/icon.icns",
       "icons/icon.png"
     ],
+    "macOS": {
+      "signingIdentity": "-",
+      "hardenedRuntime": false,
+      "minimumSystemVersion": "10.15"
+    },
     "windows": {
       "nsis": {
         "installMode": "both",

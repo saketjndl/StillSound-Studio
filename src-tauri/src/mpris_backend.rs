@@ -1,10 +1,35 @@
 /// Linux MPRIS (Media Player Remote Interfacing Specification) backend over D-Bus
-/// Controls media players like Spotify, VLC, Rhythmbox, Firefox, Chrome, etc. on Linux.
+/// Controls dedicated music players (Spotify, VLC, Rhythmbox, etc.) while ignoring web browsers.
 
 use crate::media_backend::TrackInfo;
 
+#[cfg(any(target_os = "linux", test))]
+pub(crate) fn is_browser_identity(identity: &str, bus_name: &str) -> bool {
+    let id = identity.to_ascii_lowercase();
+    let bus = bus_name.to_ascii_lowercase();
+    const BROWSER_MARKERS: [&str; 14] = [
+        "chrome",
+        "chromium",
+        "firefox",
+        "brave",
+        "edge",
+        "msedge",
+        "opera",
+        "vivaldi",
+        "zen",
+        "arc",
+        "floorp",
+        "librewolf",
+        "waterfox",
+        "plasma-browser-integration",
+    ];
+    BROWSER_MARKERS
+        .iter()
+        .any(|marker| id.contains(marker) || bus.contains(marker))
+}
+
 #[cfg(target_os = "linux")]
-use mpris::{PlayerFinder, PlaybackStatus};
+use mpris::{PlaybackStatus, PlayerFinder};
 
 #[cfg(target_os = "linux")]
 pub struct MprisBackend;
@@ -17,7 +42,38 @@ impl MprisBackend {
 
     fn get_player(&self) -> Result<mpris::Player, String> {
         let finder = PlayerFinder::new().map_err(|e| format!("Failed to connect to D-Bus: {}", e))?;
-        finder.find_active().map_err(|e| format!("No active MPRIS player found: {}", e))
+        let players = finder
+            .find_all()
+            .map_err(|e| format!("No MPRIS players found: {}", e))?;
+
+        let non_browsers: Vec<mpris::Player> = players
+            .into_iter()
+            .filter(|p| !is_browser_identity(p.identity(), p.bus_name()))
+            .collect();
+
+        if non_browsers.is_empty() {
+            return Err("No non-browser MPRIS media player found".into());
+        }
+
+        let mut paused_fallback: Option<mpris::Player> = None;
+        let mut any_fallback: Option<mpris::Player> = None;
+
+        for player in non_browsers {
+            match player.get_playback_status() {
+                Ok(PlaybackStatus::Playing) => return Ok(player),
+                Ok(PlaybackStatus::Paused) if paused_fallback.is_none() => {
+                    paused_fallback = Some(player);
+                }
+                _ if any_fallback.is_none() => {
+                    any_fallback = Some(player);
+                }
+                _ => {}
+            }
+        }
+
+        paused_fallback
+            .or(any_fallback)
+            .ok_or_else(|| "No active non-browser MPRIS media player found".into())
     }
 
     pub fn pause(&self) -> Result<(), String> {
@@ -67,13 +123,14 @@ impl MprisBackend {
     pub fn set_volume(&self, volume_percent: u32) -> Result<(), String> {
         let player = self.get_player()?;
         let vol = (volume_percent as f64 / 100.0).clamp(0.0, 1.0);
-        let _ = player.set_volume(vol);
+        player.set_volume(vol).map_err(|e| e.to_string())?;
         println!("[MPRIS] Set volume to {}% on {}", volume_percent, player.identity());
         Ok(())
     }
 
     pub fn get_volume(&self) -> Option<u32> {
-        self.get_player().ok()
+        self.get_player()
+            .ok()
             .and_then(|p| p.get_volume().ok())
             .map(|v| (v * 100.0).round() as u32)
     }
@@ -136,4 +193,18 @@ impl MprisBackend {
     pub fn get_volume(&self) -> Option<u32> { None }
     pub fn is_playing(&self) -> bool { false }
     pub fn get_track_info(&self) -> TrackInfo { TrackInfo::default() }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn filters_browser_mpris_identities() {
+        assert!(is_browser_identity("Mozilla Firefox", "org.mpris.MediaPlayer2.firefox.instance123"));
+        assert!(is_browser_identity("Google Chrome", "org.mpris.MediaPlayer2.chromium.instance9"));
+        assert!(is_browser_identity("Brave", "org.mpris.MediaPlayer2.chromium.instance42"));
+        assert!(!is_browser_identity("Spotify", "org.mpris.MediaPlayer2.spotify"));
+        assert!(!is_browser_identity("VLC media player", "org.mpris.MediaPlayer2.vlc"));
+    }
 }
