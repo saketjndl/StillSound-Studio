@@ -14,7 +14,7 @@
 </head>
 
 <body>
-    <img id="ambient-bg" class="ambient-bg" src="" alt="" />
+    <img id="ambient-bg" class="ambient-bg" alt="" />
     <div class="shell">
         <header class="titlebar" data-tauri-drag-region>
             <div class="tb-left" data-tauri-drag-region>
@@ -24,59 +24,84 @@
             <div class="tb-right">
                 <button class="tb-btn" id="win-settings" title="Settings" style="display:flex">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                        stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                        <circle cx="12" cy="12" r="3" />
+                        stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
                         <path
-                            d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+                            d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
+                        <circle cx="12" cy="12" r="3" />
                     </svg>
                 </button>
-                <button class="tb-btn" id="win-min" onclick="window.__minApp(event)">
+                <button class="tb-btn" id="win-min" title="Minimize" onclick="window.__minApp(event)">
                     <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                        stroke-width="2.5">
+                        stroke-width="2.5" stroke-linecap="round">
                         <path d="M5 12h14" />
                     </svg>
                 </button>
-                <button class="tb-btn x" id="win-close" onclick="window.__closeApp(event)">
+                <button class="tb-btn x" id="win-close" title="Hide to Tray" onclick="window.__closeApp(event)">
                     <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                        stroke-width="2.5">
+                        stroke-width="2.5" stroke-linecap="round">
                         <path d="M18 6L6 18M6 6l12 12" />
                     </svg>
                 </button>
             </div>
         </header>
 
-        <!-- SETUP -->
+        <!-- Sub-Header Tab Bar (Console | Rules | Settings) -->
+        <nav class="app-tabs" id="app-tabs" style="display:none">
+            <button class="tab-btn active" data-tab="console" id="tab-console" type="button">Console</button>
+            <button class="tab-btn" data-tab="rules" id="tab-rules" type="button">Rules</button>
+            <button class="tab-btn" data-tab="settings" id="tab-settings" type="button">Settings</button>
+        </nav>
+
+        <!-- SETUP (Universal-First Onboarding) -->
         <main class="view" id="v-setup">
             <div class="setup">
                 <h1>StillSound</h1>
-                <p class="tagline">Pauses your Spotify when you watch YouTube.<br>Brings it back when you're done.</p>
+                <p class="tagline">Auto-pauses or smoothly ducks your music whenever videos play or your mic activates.</p>
 
-                <button class="btn" id="btn-connect">
-                    <span>Connect to Spotify</span>
-                    <div class="spin" id="spin"></div>
+                <div class="setup-steps">
+                    <div class="step-row">
+                        <span class="step-num on">1</span>
+                        <span class="step-text">Desktop Console Running</span>
+                        <span class="conn-pill on">ready</span>
+                    </div>
+                    <div class="step-row">
+                        <span class="step-num" id="setup-step-ext">2</span>
+                        <span class="step-text">Browser Extension</span>
+                        <span class="conn-pill" id="setup-ext-pill">waiting</span>
+                    </div>
+                    <div class="step-row">
+                        <span class="step-num" id="setup-step-player">3</span>
+                        <span class="step-text">Music Player Detected</span>
+                        <span class="conn-pill" id="setup-player-pill">standby</span>
+                    </div>
+                </div>
+
+                <button class="btn" id="btn-switch-universal" type="button">
+                    <span>Start in Universal Mode (Zero Setup)</span>
                 </button>
 
-                <button class="btn" id="btn-switch-universal" style="margin-top: 8px; background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.12); color: #ffffff;">
-                    <span>⚡ Use Universal Mode (No Spotify Login)</span>
+                <button class="btn btn-secondary" id="btn-connect" type="button" style="margin-top: 8px;">
+                    <span>Optional: Connect Spotify Account</span>
+                    <div class="spin" id="spin"></div>
                 </button>
 
                 <div class="advanced-toggle" id="advanced-toggle">
                     <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
                         <path d="M9 18l6-6-6-6"/>
                     </svg>
-                    <span>Advanced setup</span>
+                    <span>Advanced Spotify setup</span>
                 </div>
 
                 <div class="advanced-section" id="advanced-section" style="display:none">
                     <div class="field">
-                        <label for="client-id">Custom Spotify Client ID <small>— optional, for rate-limit workaround</small></label>
-                        <input type="text" class="text-input" id="client-id" placeholder="Paste your own Client ID (leave blank to use default)"
+                        <label for="client-id">Custom Spotify Client ID <small>— optional override</small></label>
+                        <input type="text" class="text-input" id="client-id" placeholder="Paste Client ID (blank uses bundled default)"
                             spellcheck="false" autocomplete="off">
                         <span class="field-link" id="open-dash">Open Spotify Developer Dashboard ↗</span>
                     </div>
 
                     <div class="field">
-                        <label>Redirect URI <small>— add this in your Spotify app settings</small></label>
+                        <label>Redirect URI <small>— add in Spotify app settings</small></label>
                         <div class="copy-row">
                             <code>http://127.0.0.1:8921/callback</code>
                             <span class="copy-btn" id="copy-uri">Copy</span>
@@ -85,26 +110,26 @@
                 </div>
 
                 <div class="note">
-                    <strong>Browser Extension required.</strong><br>
+                    <strong>Browser Extension required for video detection.</strong><br>
                     <span class="field-link" id="open-ext-download">Download extension / install guide ↗</span><br>
-                    Supports Chrome, Brave, Edge (<code>chrome://extensions</code> → Developer Mode → Load Unpacked) &amp; Firefox (<code>about:debugging</code>).
+                    Chrome / Brave / Edge: Developer Mode → Load Unpacked · Firefox: <code>about:debugging</code>
                 </div>
 
                 <div class="thankyou">
-                    <p>StillSound is free &amp; open source.<br>If it helps your study sessions, consider starring us.</p>
-                    <a href="#" id="star-setup">★ Star on GitHub</a> · <a href="#" id="feedback-setup">Report Bug</a>
+                    <p>StillSound is free &amp; open source.<br>If it improves your workflow, consider starring us.</p>
+                    <a href="#" id="star-setup">&#9733; Star on GitHub</a> · <a href="#" id="feedback-setup">Report Bug</a>
                 </div>
             </div>
         </main>
 
-        <!-- DASHBOARD -->
+        <!-- CONSOLE (DASHBOARD) -->
         <main class="view dash" id="v-dash" style="display:none">
             <div class="notice-banner" id="whats-new-banner" style="display:none">
                 <div class="notice-body" id="whats-new-link">
                     <div class="notice-title" id="whats-new-title">Updated to StillSound</div>
                     <div class="notice-sub">Tap to view changelog &amp; fixes ↗</div>
                 </div>
-                <button class="notice-close" id="whats-new-dismiss" title="Dismiss">&times;</button>
+                <button class="notice-close" id="whats-new-dismiss" title="Dismiss" type="button">&times;</button>
             </div>
 
             <div class="notice-banner update" id="dash-update-banner" style="display:none">
@@ -112,16 +137,16 @@
                     <div class="notice-title" id="dash-update-title">Update available</div>
                     <div class="notice-sub">Tap to download latest release ↗</div>
                 </div>
-                <button class="notice-close" id="dash-update-dismiss" title="Dismiss">&times;</button>
+                <button class="notice-close" id="dash-update-dismiss" title="Dismiss" type="button">&times;</button>
             </div>
 
             <!-- Dynamic Island Music Section -->
             <div class="music-section" id="music-section">
                 <div class="music-info-row">
                     <div class="album-art-wrap">
-                        <img class="album-art" id="album-art" src="" alt="" />
+                        <img class="album-art" id="album-art" alt="" />
                         <div class="art-placeholder" id="art-placeholder">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.4)" stroke-width="1.5">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.45)" stroke-width="1.5">
                                 <path d="M9 18V5l12-2v13" />
                                 <circle cx="6" cy="18" r="3" />
                                 <circle cx="18" cy="16" r="3" />
@@ -132,32 +157,71 @@
                         <div class="track-name" id="track-name">Not Playing</div>
                         <div class="track-artist" id="track-artist">Open Spotify or your media player</div>
                         <div class="status-row-small">
+                            <span class="state-chip" id="live-state-pill" style="display:none"></span>
                             <div class="status-text-small" id="s-sub">Play a video to auto-pause</div>
                         </div>
                     </div>
                 </div>
-                
+
                 <div class="music-controls" id="controls">
-                    <button class="ctrl-btn" id="btn-prev" title="Previous">
+                    <button class="ctrl-btn" id="btn-prev" title="Previous Track" type="button">
                         <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg>
                     </button>
-                    <button class="ctrl-btn play-pause" id="btn-play-pause" title="Play/Pause">
+                    <button class="ctrl-btn play-pause" id="btn-play-pause" title="Play / Pause (Ctrl+Alt+P)" type="button">
                         <svg viewBox="0 0 24 24" fill="currentColor" id="icon-play" class="visible"><path d="M8 5v14l11-7z"/></svg>
                         <svg viewBox="0 0 24 24" fill="currentColor" id="icon-pause" class="hidden"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
                     </button>
-                    <button class="ctrl-btn" id="btn-next" title="Next">
+                    <button class="ctrl-btn" id="btn-next" title="Next Track" type="button">
                         <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>
                     </button>
                 </div>
             </div>
 
+            <!-- Auto Sync & Timed Snooze -->
             <div class="ctrl-section">
                 <div class="ctrl-row">
-                    <span class="ctrl-label">Auto Sync</span>
+                    <div class="ctrl-info">
+                        <span class="ctrl-label">Auto Sync</span>
+                        <span class="ctrl-desc" id="sync-status-desc">Monitoring videos &amp; calls</span>
+                    </div>
                     <label class="toggle">
                         <input type="checkbox" id="sync-toggle" checked>
                         <span class="toggle-track"></span>
                     </label>
+                </div>
+                <div class="snooze-bar" id="snooze-bar">
+                    <span class="snooze-label">Quick Snooze</span>
+                    <div class="snooze-chips" id="snooze-chips">
+                        <button class="chip-btn" data-mins="15" type="button">15m</button>
+                        <button class="chip-btn" data-mins="60" type="button">1h</button>
+                        <button class="chip-btn" data-restart="true" type="button">Until Restart</button>
+                        <button class="chip-btn active-resume" id="snooze-resume-btn" style="display:none" type="button">Resume</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Quick Mode & Live Mix -->
+            <div class="ctrl-section">
+                <div class="ctrl-row" style="margin-bottom: 10px;">
+                    <span class="ctrl-label">Control Engine</span>
+                    <div class="segmented-control" id="dash-mode-pills">
+                        <button class="seg-btn active" data-mode="universal" type="button">Universal</button>
+                        <button class="seg-btn" data-mode="spotify" type="button">Spotify API</button>
+                    </div>
+                </div>
+                <div id="vol-section" style="display:none">
+                    <div class="ctrl-row">
+                        <span class="ctrl-desc">Spotify Volume</span>
+                        <span class="ctrl-val" id="vol-num">50%</span>
+                    </div>
+                    <input type="range" id="vol-slider" min="0" max="100" value="50">
+                </div>
+                <div id="dash-duck-row">
+                    <div class="ctrl-row">
+                        <span class="ctrl-desc">Feed Duck Level</span>
+                        <span class="ctrl-val" id="dash-duck-num">20%</span>
+                    </div>
+                    <input type="range" id="dash-duck-slider" min="5" max="60" value="20" step="5">
                 </div>
             </div>
 
@@ -172,48 +236,41 @@
                         </svg>
                         <span>Weekly Focus Recap</span>
                     </span>
-                    <span class="ctrl-desc" style="font-size: 11px; color: #1ed760;">Live stats</span>
+                    <span class="ctrl-desc" style="font-size: 10px; color: #2fcc6b;">7-day live</span>
                 </div>
-                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; text-align: center; margin-top: 6px;">
-                    <div style="background: rgba(255,255,255,0.04); padding: 8px; border-radius: 8px;">
-                        <div style="font-size: 14px; font-weight: 700; color: #fff;" id="recap-focus">0m</div>
-                        <div style="font-size: 10px; color: rgba(255,255,255,0.5);">Focus Video</div>
+                <div class="recap-grid">
+                    <div class="recap-cell">
+                        <div class="recap-num" id="recap-focus">0m</div>
+                        <div class="recap-lbl">Focus Video</div>
                     </div>
-                    <div style="background: rgba(255,255,255,0.04); padding: 8px; border-radius: 8px;">
-                        <div style="font-size: 14px; font-weight: 700; color: #fff;" id="recap-music">0m</div>
-                        <div style="font-size: 10px; color: rgba(255,255,255,0.5);">Music Time</div>
+                    <div class="recap-cell">
+                        <div class="recap-num" id="recap-music">0m</div>
+                        <div class="recap-lbl">Music Time</div>
                     </div>
-                    <div style="background: rgba(255,255,255,0.04); padding: 8px; border-radius: 8px;">
-                        <div style="font-size: 14px; font-weight: 700; color: #1ed760;" id="recap-saved">0</div>
-                        <div style="font-size: 10px; color: rgba(255,255,255,0.5);">Alt-Tabs Saved</div>
+                    <div class="recap-cell">
+                        <div class="recap-num accent" id="recap-saved">0</div>
+                        <div class="recap-lbl">Alt-Tabs Saved</div>
                     </div>
                 </div>
             </div>
 
-            <div class="ctrl-section" id="vol-section">
-                <div class="ctrl-row">
-                    <span class="ctrl-label">Volume</span>
-                    <span class="ctrl-val" id="vol-num">50%</span>
-                </div>
-                <input type="range" id="vol-slider" min="0" max="100" value="50">
-            </div>
-
+            <!-- Connections -->
             <div class="ctrl-section">
                 <div class="conn-row">
-                    <span class="conn-name" id="media-conn-name">Spotify</span>
-                    <span class="conn-pill on" id="p-spotify">connected</span>
+                    <span class="conn-name" id="media-conn-name">Media Player</span>
+                    <span class="conn-pill on" id="p-spotify">active</span>
                 </div>
                 <div class="conn-row">
-                    <span class="conn-name">Extension</span>
-                    <span class="conn-pill" id="p-ext">waiting</span>
+                    <span class="conn-name">Extension <span id="ext-clients-label" class="ext-clients"></span></span>
+                    <span class="conn-pill" id="p-ext">unlinked</span>
                 </div>
                 <div id="ext-help" class="note" style="margin-top: 10px; font-size: 10px;">
                     <span class="field-link" id="open-ext-dash">Download extension from GitHub ↗</span><br>
-                    Chrome/Brave/Edge: Developer Mode → Load Unpacked · Firefox: <code>about:debugging</code>
+                    Chrome / Brave / Edge: Developer Mode → Load Unpacked · Firefox: <code>about:debugging</code>
                 </div>
             </div>
 
-            <button class="btn-flat" id="refresh-device">
+            <button class="btn-flat" id="refresh-device" type="button" style="display:none">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M1 4v6h6M23 20v-6h-6" />
                     <path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15" />
@@ -229,17 +286,33 @@
             </div>
         </main>
 
-        <!-- SETTINGS -->
-        <main class="view" id="v-settings" style="display:none">
-            <div class="settings-header">
-                <button class="icon-btn" id="settings-back">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M19 12H5M12 19l-7-7 7-7" />
-                    </svg>
-                </button>
-                <h1>Settings</h1>
+        <!-- RULES (Dedicated Site Matrix, Presets & Custom Domains) -->
+        <main class="view" id="v-rules" style="display:none">
+            <div class="ctrl-section" style="padding: 12px;">
+                <div class="ctrl-row" style="margin-bottom: 8px;">
+                    <span class="ctrl-label">Quick Presets</span>
+                    <div class="preset-bar" id="preset-bar">
+                        <button class="chip-btn" data-preset="study" type="button">Study</button>
+                        <button class="chip-btn" data-preset="chill" type="button">Chill</button>
+                        <button class="chip-btn" data-preset="meeting" type="button">Meeting</button>
+                    </div>
+                </div>
+                <div class="input-row">
+                    <input type="text" class="text-input compact" id="custom-domain-input" placeholder="Add domain (e.g. bbc.co.uk)" spellcheck="false" autocomplete="off">
+                    <button class="chip-btn primary" id="btn-add-domain" type="button">+ Add</button>
+                </div>
+                <input type="text" class="text-input compact" id="site-search" placeholder="Filter sites..." style="margin-top: 8px;" spellcheck="false" autocomplete="off">
             </div>
 
+            <div class="ctrl-section" style="flex: 1; display: flex; flex-direction: column; min-height: 0; margin-bottom: 0;">
+                <div id="sites-list" class="sites-container" style="flex: 1; overflow-y: auto; padding-right: 4px;">
+                    <!-- Populated dynamically by JS -->
+                </div>
+            </div>
+        </main>
+
+        <!-- SETTINGS -->
+        <main class="view" id="v-settings" style="display:none">
             <div class="ctrl-section">
                 <div class="ctrl-row" style="margin-bottom: 10px;">
                     <div class="ctrl-info">
@@ -248,7 +321,7 @@
                     </div>
                 </div>
                 <div class="mode-selector" id="mode-selector">
-                    <button class="mode-btn active" data-mode="universal" id="mode-universal">
+                    <button class="mode-btn active" data-mode="universal" id="mode-universal" type="button">
                         <span class="mode-icon">
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                 <circle cx="12" cy="12" r="10"/>
@@ -256,10 +329,10 @@
                                 <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
                             </svg>
                         </span>
-                        <span class="mode-name">Universal <small>(beta)</small></span>
-                        <span class="mode-desc">Any media player · Zero setup · Works offline</span>
+                        <span class="mode-name">Universal</span>
+                        <span class="mode-desc">Any player · Zero setup · Offline</span>
                     </button>
-                    <button class="mode-btn" data-mode="spotify" id="mode-spotify">
+                    <button class="mode-btn" data-mode="spotify" id="mode-spotify" type="button">
                         <span class="mode-icon">
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                 <path d="M9 18V5l12-2v13"/>
@@ -267,28 +340,30 @@
                                 <circle cx="18" cy="16" r="3"/>
                             </svg>
                         </span>
-                        <span class="mode-name">Spotify</span>
-                        <span class="mode-desc">Album art · Volume sync · Multi-device</span>
+                        <span class="mode-name">Spotify API</span>
+                        <span class="mode-desc">Cloud volume · Multi-device</span>
                     </button>
                 </div>
             </div>
 
-            <!-- SMART AUDIO & WORKFLOW FEATURES -->
+            <!-- SMART AUDIO -->
             <div class="ctrl-section">
-                <div class="ctrl-row" style="margin-bottom: 12px;">
+                <div class="ctrl-row" style="margin-bottom: 10px;">
                     <div class="ctrl-info">
                         <span class="ctrl-label" style="display: flex; align-items: center; gap: 6px;">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ffaa00" stroke-width="2.2">
-                                <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ffaa00" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round">
+                                <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+                                <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
+                                <path d="M19.07 4.93a10 10 0 0 1 0 14.14" opacity="0.45" />
                             </svg>
-                            <span>Audio Ducking & Fade</span>
+                            <span>Audio Ducking &amp; Fade</span>
                         </span>
                         <span class="ctrl-desc">Smooth volume attenuation for feeds</span>
                     </div>
                     <span class="ctrl-val" id="duck-level-num">20%</span>
                 </div>
                 <input type="range" id="duck-level-slider" min="5" max="60" value="20" step="5">
-                <div style="display: flex; justify-content: space-between; font-size: 10px; color: var(--faint); margin-top: 4px;">
+                <div class="range-ticks">
                     <span>Whisper (5%)</span>
                     <span>Soft (20%)</span>
                     <span>Audible (60%)</span>
@@ -299,18 +374,31 @@
                 <div class="ctrl-row">
                     <div class="ctrl-info">
                         <span class="ctrl-label">Smart Rewind on Resume</span>
-                        <span class="ctrl-desc">Backtrack 5s after long pauses (>30s)</span>
+                        <span class="ctrl-desc">Rewind track after extended video/call pauses</span>
                     </div>
                     <label class="toggle">
                         <input type="checkbox" id="smart-rewind-toggle" checked>
                         <span class="toggle-track"></span>
                     </label>
                 </div>
+                <div class="ctrl-row sub-row" id="rewind-config-row">
+                    <div class="segmented-control" id="rewind-secs-selector">
+                        <button class="seg-btn" data-secs="3" type="button">3s</button>
+                        <button class="seg-btn active" data-secs="5" type="button">5s</button>
+                        <button class="seg-btn" data-secs="10" type="button">10s</button>
+                        <button class="seg-btn" data-secs="15" type="button">15s</button>
+                    </div>
+                    <div class="segmented-control" id="rewind-thresh-selector">
+                        <button class="seg-btn" data-thresh="10" type="button">&gt;10s</button>
+                        <button class="seg-btn active" data-thresh="30" type="button">&gt;30s</button>
+                        <button class="seg-btn" data-thresh="60" type="button">&gt;60s</button>
+                    </div>
+                </div>
 
                 <div class="ctrl-row" style="margin-top: 14px;">
                     <div class="ctrl-info">
                         <span class="ctrl-label">Mic / Call-Aware Mode</span>
-                        <span class="ctrl-desc">Auto-duck when Zoom/Meet/Discord mic is unmuted</span>
+                        <span class="ctrl-desc">Auto-duck when Zoom/Meet/Discord mic activates</span>
                     </div>
                     <label class="toggle">
                         <input type="checkbox" id="mic-aware-toggle" checked>
@@ -318,18 +406,22 @@
                     </label>
                 </div>
 
-                <div class="ctrl-row" id="mic-action-row" style="margin-top: 10px; padding-left: 12px; border-left: 2px solid rgba(255, 170, 0, 0.3);">
+                <div class="ctrl-row sub-row" id="mic-action-row">
                     <span class="ctrl-desc" style="font-size: 11px;">When mic activates:</span>
                     <div class="segmented-control" id="mic-action-selector">
-                        <button class="seg-btn active" data-action="duck">Duck</button>
-                        <button class="seg-btn" data-action="pause">Pause</button>
+                        <button class="seg-btn active" data-action="duck" type="button">Duck</button>
+                        <button class="seg-btn" data-action="pause" type="button">Pause</button>
+                        <button class="seg-btn" data-action="ignore" type="button">Ignore</button>
                     </div>
                 </div>
+            </div>
 
-                <div class="ctrl-row" style="margin-top: 14px;">
+            <!-- MINI-HUD SECTION -->
+            <div class="ctrl-section">
+                <div class="ctrl-row">
                     <div class="ctrl-info">
                         <span class="ctrl-label">Floating Mini-HUD</span>
-                        <span class="ctrl-desc">Always-on-top compact overlay widget</span>
+                        <span class="ctrl-desc">Always-on-top compact desktop capsule</span>
                     </div>
                     <label class="toggle">
                         <input type="checkbox" id="mini-hud-toggle">
@@ -337,19 +429,39 @@
                     </label>
                 </div>
 
+                <div class="ctrl-row sub-row" id="hud-mode-row" style="margin-top: 10px;">
+                    <span class="ctrl-desc" style="font-size: 11px;">HUD Behavior:</span>
+                    <div class="segmented-control" id="hud-mode-selector">
+                        <button class="seg-btn active" data-hud-mode="pinned" type="button">Pinned</button>
+                        <button class="seg-btn" data-hud-mode="peek" type="button">Peek</button>
+                        <button class="seg-btn" data-hud-mode="autohide" type="button">Hide</button>
+                    </div>
+                </div>
+
                 <div class="ctrl-row" style="margin-top: 14px;">
                     <div class="ctrl-info">
                         <span class="ctrl-label">Spinning Mini-HUD Album Art</span>
-                        <span class="ctrl-desc">Keep vinyl rotation off during lectures</span>
+                        <span class="ctrl-desc">Keep rotation off during lectures</span>
                     </div>
                     <label class="toggle">
                         <input type="checkbox" id="spin-art-toggle" checked>
                         <span class="toggle-track"></span>
                     </label>
                 </div>
+
+                <div class="ctrl-row" style="margin-top: 14px;">
+                    <div class="ctrl-info">
+                        <span class="ctrl-label">Lock Mini-HUD Position</span>
+                        <span class="ctrl-desc">Prevent accidental dragging</span>
+                    </div>
+                    <label class="toggle">
+                        <input type="checkbox" id="hud-lock-toggle">
+                        <span class="toggle-track"></span>
+                    </label>
+                </div>
             </div>
 
-            <!-- SYSTEM & INTEGRATIONS -->
+            <!-- SYSTEM -->
             <div class="ctrl-section">
                 <div class="ctrl-row">
                     <div class="ctrl-info">
@@ -374,36 +486,31 @@
                 <div class="ctrl-row" style="margin-top: 14px;">
                     <div class="ctrl-info">
                         <span class="ctrl-label">Minimise to tray</span>
-                        <span class="ctrl-desc">Hide window instead of standard minimize</span>
+                        <span class="ctrl-desc">Hide window instead of taskbar minimize</span>
                     </div>
                     <label class="toggle">
                         <input type="checkbox" id="minimize-to-tray-toggle">
                         <span class="toggle-track"></span>
                     </label>
                 </div>
-            </div>
-
-            <!-- SITE ACTION MATRIX -->
-            <div class="ctrl-section">
-                <div class="ctrl-row" style="margin-bottom: 6px;">
-                    <div class="ctrl-info">
-                        <span class="ctrl-label">Site Action Matrix</span>
-                        <span class="ctrl-desc">Choose Pause, Duck, or Ignore per website</span>
+                <div class="sep" style="margin: 12px 0;"></div>
+                <div class="field" style="margin-bottom: 0;">
+                    <label style="margin-bottom: 4px;">OBS Streamer Overlay URL <small>— local browser source</small></label>
+                    <div class="copy-row">
+                        <code>http://127.0.0.1:9877/overlay</code>
+                        <span class="copy-btn" id="copy-obs-uri">Copy</span>
                     </div>
                 </div>
-                
-                <div id="sites-list" class="sites-container" style="max-height: 280px; overflow-y: auto; padding-right: 5px;">
-                    <!-- Populated dynamically by JS -->
-                </div>
             </div>
 
+            <!-- UPDATES & FEEDBACK -->
             <div class="ctrl-section">
                 <div class="ctrl-row">
                     <div class="ctrl-info">
                         <span class="ctrl-label">Updates</span>
                         <span id="update-status" class="ctrl-desc">You are on the latest version</span>
                     </div>
-                    <button class="btn-flat" id="check-updates"
+                    <button class="btn-flat" id="check-updates" type="button"
                         style="width: auto; margin: 0; padding: 6px 12px;">Check</button>
                 </div>
                 <div class="sep" style="margin: 12px 0;"></div>
@@ -412,8 +519,12 @@
                         <span class="ctrl-label">Feedback &amp; Bug Report</span>
                         <span class="ctrl-desc">Opens GitHub Issues with app version &amp; OS info</span>
                     </div>
-                    <button class="btn-flat" id="open-feedback"
+                    <button class="btn-flat" id="open-feedback" type="button"
                         style="width: auto; margin: 0; padding: 6px 12px;">Report ↗</button>
+                </div>
+                <div class="ctrl-row" style="margin-top: 10px;">
+                    <span class="ctrl-desc">Global Hotkeys</span>
+                    <span class="ctrl-val">Ctrl+Alt+P · Alt+Shift+P</span>
                 </div>
             </div>
 

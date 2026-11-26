@@ -83,13 +83,19 @@
             pointer-events: none;
         }
 
-        /* Translucent / Dim state when Auto-Hide is OFF and idle */
+        /* Translucent / Dim state when Pinned & idle */
         .capsule.dimmed {
-            opacity: 0.32;
+            opacity: 0.56;
         }
 
-        .capsule.dimmed:hover {
+        .capsule.dimmed:hover,
+        .capsule.peeking {
             opacity: 1;
+        }
+
+        /* Drag hint glow when unlocked on hover */
+        .capsule.unlocked:hover {
+            border-color: rgba(255, 255, 255, 0.34);
         }
 
         /* Reveal strip when auto-hidden */
@@ -314,7 +320,7 @@
             border-radius: 50%;
             background: rgba(255, 255, 255, 0.06);
             border: none;
-            color: var(--faint);
+            color: #9b968e;
             cursor: pointer;
             transition: all 0.15s ease;
         }
@@ -433,17 +439,42 @@
         const revealStrip = document.getElementById('reveal-strip');
 
         let isPlaying = false;
-        let isPinned = true; // Default: pinned in place
-        let autoHideEnabled = false;
+        let isPinned = false; // false = unlocked/draggable by default; persisted via mini_hud_locked
+        let hudMode = 'pinned'; // 'pinned' | 'peek' | 'autohide'
         let idleTimer = null;
+        let peekTimer = null;
         let isAutoHidden = false;
         let isHovered = false;
+        let lastPeekKey = '';
 
-        // --- Dragging Support (Only when unpinned!) ---
+        function applyLockUi() {
+            btnPin.classList.toggle('active', isPinned);
+            capsule.classList.toggle('unlocked', !isPinned);
+            if (isPinned) {
+                iconPinned.style.display = 'block';
+                iconUnpinned.style.display = 'none';
+                btnPin.title = 'Position Locked (Click to unlock & drag)';
+            } else {
+                iconPinned.style.display = 'none';
+                iconUnpinned.style.display = 'block';
+                btnPin.title = 'Unlocked — drag pill anywhere (Click to lock)';
+            }
+        }
+
+        function applyHudModeUi() {
+            btnAutoHide.classList.toggle('active', hudMode !== 'pinned');
+            if (hudMode === 'peek') {
+                btnAutoHide.title = 'HUD Mode: Peek on Action/Track (Click to cycle)';
+            } else if (hudMode === 'autohide') {
+                btnAutoHide.title = 'HUD Mode: Auto-Hide (Click to cycle)';
+            } else {
+                btnAutoHide.title = 'HUD Mode: Pinned Visible (Click to cycle to Peek)';
+            }
+        }
+
+        // --- Dragging Support (when unlocked) ---
         capsule.addEventListener('mousedown', async (e) => {
             if (e.target.closest('button') || e.target.closest('.controls')) return;
-            
-            // When pinned in place, ignore dragging
             if (isPinned) return;
 
             if (invoke) {
@@ -459,7 +490,6 @@
             }
         });
 
-        // Save position on mouseup
         window.addEventListener('mouseup', async () => {
             if (!isPinned && appWindow && typeof appWindow.outerPosition === 'function' && invoke) {
                 try {
@@ -469,54 +499,69 @@
             }
         });
 
-        // --- Pin in Place Toggle ---
+        // --- Lock / Pin Toggle ---
         btnPin.addEventListener('click', (e) => {
             e.stopPropagation();
             isPinned = !isPinned;
-            btnPin.classList.toggle('active', isPinned);
-            capsule.classList.toggle('unlocked', !isPinned);
-
-            if (isPinned) {
-                iconPinned.style.display = 'block';
-                iconUnpinned.style.display = 'none';
-                btnPin.title = 'Pinned in Place (Click to unlock & drag)';
-            } else {
-                iconPinned.style.display = 'none';
-                iconUnpinned.style.display = 'block';
-                btnPin.title = 'Unlocked (Click & drag to reposition)';
+            applyLockUi();
+            if (invoke) {
+                invoke('set_hud_prefs', { locked: isPinned }).catch(() => {});
             }
         });
 
-        // --- Auto-Hide Toggle ---
+        // --- Cycle HUD Visibility Mode (pinned -> peek -> autohide) ---
         btnAutoHide.addEventListener('click', (e) => {
             e.stopPropagation();
-            autoHideEnabled = !autoHideEnabled;
-            btnAutoHide.classList.toggle('active', autoHideEnabled);
-            btnAutoHide.title = autoHideEnabled ? 'Auto-Hide ON' : 'Auto-Hide OFF (Translucent when idle)';
-
-            resetIdleState();
+            hudMode = hudMode === 'pinned' ? 'peek' : hudMode === 'peek' ? 'autohide' : 'pinned';
+            applyHudModeUi();
+            if (hudMode === 'peek') {
+                triggerPeek(2600);
+            } else {
+                resetIdleState();
+            }
+            if (invoke) {
+                invoke('set_hud_prefs', { mode: hudMode }).catch(() => {});
+            }
         });
+
+        function triggerPeek(durationMs = 2800) {
+            clearTimeout(idleTimer);
+            clearTimeout(peekTimer);
+            isAutoHidden = false;
+            capsule.classList.remove('auto-hidden', 'dimmed');
+            capsule.classList.add('peeking');
+            peekTimer = setTimeout(() => {
+                capsule.classList.remove('peeking');
+                if (!isHovered && hudMode === 'peek') {
+                    isAutoHidden = true;
+                    capsule.classList.add('auto-hidden');
+                }
+            }, durationMs);
+        }
 
         function resetIdleState() {
             clearTimeout(idleTimer);
-            capsule.classList.remove('dimmed', 'auto-hidden');
+            clearTimeout(peekTimer);
+            capsule.classList.remove('dimmed', 'auto-hidden', 'peeking');
             isAutoHidden = false;
 
             if (!isHovered) {
+                const delay = hudMode === 'peek' ? 2800 : 3500;
                 idleTimer = setTimeout(() => {
                     if (!isHovered) {
-                        if (autoHideEnabled) {
-                            // Completely slide off screen
+                        if (hudMode === 'autohide' || hudMode === 'peek') {
                             isAutoHidden = true;
                             capsule.classList.add('auto-hidden');
                         } else {
-                            // Make translucent / semi-transparent
                             capsule.classList.add('dimmed');
                         }
                     }
-                }, 3500);
+                }, delay);
             }
         }
+
+        applyLockUi();
+        applyHudModeUi();
 
         // Hover reveal strip when auto-hidden
         revealStrip.addEventListener('mouseenter', () => {
@@ -596,6 +641,21 @@
             if (typeof data.album_art_spin === 'boolean') {
                 capsule.classList.toggle('spin-art', data.album_art_spin);
             }
+            if (typeof data.mini_hud_locked === 'boolean' && data.mini_hud_locked !== isPinned) {
+                isPinned = data.mini_hud_locked;
+                applyLockUi();
+            }
+            if (typeof data.mini_hud_mode === 'string' && data.mini_hud_mode !== hudMode) {
+                hudMode = data.mini_hud_mode;
+                applyHudModeUi();
+                resetIdleState();
+            }
+
+            const peekKey = `${data.track_name || ''}|${!!data.is_ducked}|${!!data.yt_playing}|${!!data.app_paused_spotify}|${!!data.mic_active}|${data.sync_effective !== false}`;
+            if (lastPeekKey && peekKey !== lastPeekKey && hudMode === 'peek') {
+                triggerPeek(2800);
+            }
+            lastPeekKey = peekKey;
 
             if (data.track_name && data.track_name.length > 0) {
                 trackTitle.textContent = data.track_name;
@@ -666,6 +726,22 @@
             });
             listen('hud_spin_changed', (event) => {
                 capsule.classList.toggle('spin-art', !!event.payload);
+            });
+            listen('hud_prefs_changed', (event) => {
+                const p = event.payload || {};
+                if (typeof p.album_art_spin === 'boolean') {
+                    capsule.classList.toggle('spin-art', p.album_art_spin);
+                }
+                if (typeof p.mini_hud_locked === 'boolean') {
+                    isPinned = p.mini_hud_locked;
+                    applyLockUi();
+                }
+                if (typeof p.mini_hud_mode === 'string') {
+                    hudMode = p.mini_hud_mode;
+                    applyHudModeUi();
+                    if (hudMode === 'peek') triggerPeek(2600);
+                    else resetIdleState();
+                }
             });
         }
     </script>

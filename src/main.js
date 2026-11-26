@@ -1,46 +1,75 @@
 const { invoke } = window.__TAURI__.core;
 const { listen } = window.__TAURI__.event;
 
-// --- refs ---
+// --- Views & Navigation ---
+const appTabs = document.getElementById('app-tabs');
 const vSetup = document.getElementById('v-setup');
 const vDash = document.getElementById('v-dash');
+const vRules = document.getElementById('v-rules');
 const vSettings = document.getElementById('v-settings');
-const clientId = document.getElementById('client-id');
-const sSub = document.getElementById('s-sub');
+const winSettingsBtn = document.getElementById('win-settings');
 
-// Music Island Refs
+// --- Setup Refs ---
+const clientId = document.getElementById('client-id');
+const setupStepExt = document.getElementById('setup-step-ext');
+const setupExtPill = document.getElementById('setup-ext-pill');
+const setupStepPlayer = document.getElementById('setup-step-player');
+const setupPlayerPill = document.getElementById('setup-player-pill');
+const advancedToggle = document.getElementById('advanced-toggle');
+const advancedSection = document.getElementById('advanced-section');
+
+// --- Dashboard Music Island Refs ---
 const musicSection = document.getElementById('music-section');
 const ambientBg = document.getElementById('ambient-bg');
 const albumArt = document.getElementById('album-art');
 const trackName = document.getElementById('track-name');
 const trackArtist = document.getElementById('track-artist');
+const liveStatePill = document.getElementById('live-state-pill');
+const sSub = document.getElementById('s-sub');
 const btnPlayPause = document.getElementById('btn-play-pause');
 const iconPlay = document.getElementById('icon-play');
 const iconPause = document.getElementById('icon-pause');
 const btnNext = document.getElementById('btn-next');
 const btnPrev = document.getElementById('btn-prev');
 
-const pSpotify = document.getElementById('p-spotify');
-const pExt = document.getElementById('p-ext');
+// --- Console Controls & Snooze Refs ---
+const syncToggle = document.getElementById('sync-toggle');
+const syncStatusDesc = document.getElementById('sync-status-desc');
+const snoozeChips = document.getElementById('snooze-chips');
+const snoozeResumeBtn = document.getElementById('snooze-resume-btn');
+const dashModePills = document.getElementById('dash-mode-pills');
 const volSlider = document.getElementById('vol-slider');
 const volNum = document.getElementById('vol-num');
-const syncToggle = document.getElementById('sync-toggle');
+const dashDuckSlider = document.getElementById('dash-duck-slider');
+const dashDuckNum = document.getElementById('dash-duck-num');
+const pSpotify = document.getElementById('p-spotify');
+const pExt = document.getElementById('p-ext');
+const extClientsLabel = document.getElementById('ext-clients-label');
 
-const winSettingsBtn = document.getElementById('win-settings');
-const settingsBack = document.getElementById('settings-back');
-const autostartToggle = document.getElementById('autostart-toggle');
-const autostartMinimizedToggle = document.getElementById('autostart-minimized-toggle');
-const minimizeToTrayToggle = document.getElementById('minimize-to-tray-toggle');
+// --- Rules Refs ---
+const presetBar = document.getElementById('preset-bar');
+const customDomainInput = document.getElementById('custom-domain-input');
+const btnAddDomain = document.getElementById('btn-add-domain');
+const siteSearchInput = document.getElementById('site-search');
+const sitesList = document.getElementById('sites-list');
 
-// Smart Audio & HUD refs
+// --- Settings Refs ---
 const duckLevelSlider = document.getElementById('duck-level-slider');
 const duckLevelNum = document.getElementById('duck-level-num');
 const smartRewindToggle = document.getElementById('smart-rewind-toggle');
+const rewindConfigRow = document.getElementById('rewind-config-row');
+const rewindSecsSelector = document.getElementById('rewind-secs-selector');
+const rewindThreshSelector = document.getElementById('rewind-thresh-selector');
 const micAwareToggle = document.getElementById('mic-aware-toggle');
 const micActionRow = document.getElementById('mic-action-row');
 const micActionSelector = document.getElementById('mic-action-selector');
 const miniHudToggle = document.getElementById('mini-hud-toggle');
+const hudModeSelector = document.getElementById('hud-mode-selector');
 const spinArtToggle = document.getElementById('spin-art-toggle');
+const hudLockToggle = document.getElementById('hud-lock-toggle');
+const autostartToggle = document.getElementById('autostart-toggle');
+const autostartMinimizedToggle = document.getElementById('autostart-minimized-toggle');
+const minimizeToTrayToggle = document.getElementById('minimize-to-tray-toggle');
 
 const GITHUB = 'https://github.com/saketjndl/StillSound-Studio';
 
@@ -51,79 +80,33 @@ const SITE_GROUPS = {
     "Conferencing (Calls)": ["meet.google.com", "zoom.us", "teams.microsoft.com"]
 };
 
+const KNOWN_BUILTINS = new Set(Object.values(SITE_GROUPS).flat());
+
 let siteActions = {};
+let currentTab = 'setup';
 let currentMode = 'universal';
 let isSpotifyReady = false;
 let currentMicAction = 'duck';
 let smartRewindSeconds = 5;
+let smartRewindThresholdSecs = 30;
+let currentHudMode = 'pinned';
 let activeBridgeCount = 0;
+let activeBridgeClients = [];
+let appVersion = '3.0.1';
+let latestUpdateUrl = '';
 
-// --- volume & ducking debounce ---
 let volTimer = null;
 let duckTimer = null;
 
-// --- helpers ---
+// --- Helpers ---
 
-function updateBridgeStatus(count) {
-    activeBridgeCount = Math.max(0, Number(count) || 0);
-    const extHelp = document.getElementById('ext-help');
-
-    if (activeBridgeCount > 0) {
-        pExt.classList.add('on');
-        pExt.textContent = activeBridgeCount > 1 ? `linked (${activeBridgeCount})` : 'linked';
-        if (extHelp) extHelp.style.display = 'none';
-    } else {
-        pExt.classList.remove('on');
-        pExt.textContent = 'unlinked';
-        if (extHelp) extHelp.style.display = 'block';
-    }
-}
-
-function updateDashForMode(mode) {
-    currentMode = mode;
-    const isUniv = mode === 'universal';
-    
-    const btnUniv = document.getElementById('mode-universal');
-    const btnSpot = document.getElementById('mode-spotify');
-    if (btnUniv && btnSpot) {
-        btnUniv.classList.toggle('active', isUniv);
-        btnSpot.classList.toggle('active', !isUniv);
-    }
-
-    const volSection = document.getElementById('vol-section');
-    if (volSection) volSection.style.display = isUniv ? 'none' : 'block';
-
-    const refreshBtn = document.getElementById('refresh-device');
-    if (refreshBtn) refreshBtn.style.display = isUniv ? 'none' : 'flex';
-
-    const mediaConnName = document.getElementById('media-conn-name');
-    if (mediaConnName) mediaConnName.textContent = isUniv ? 'Media Player' : 'Spotify';
-
-    if (isUniv) {
-        pSpotify.classList.add('on');
-        pSpotify.textContent = 'active';
-    } else if (isSpotifyReady) {
-        pSpotify.classList.add('on');
-        pSpotify.textContent = 'connected';
-    } else {
-        pSpotify.classList.remove('on');
-        pSpotify.textContent = 'waiting...';
-    }
-}
-
-function goDash() {
-    vSetup.style.display = 'none';
-    vDash.style.display = 'flex';
-    vSettings.style.display = 'none';
-    winSettingsBtn.style.display = 'flex';
-
-    if (currentMode === 'spotify') {
-        invoke('get_spotify_volume').then((vol) => {
-            volSlider.value = vol;
-            volNum.textContent = vol + '%';
-        }).catch(() => { });
-    }
-    updateDashForMode(currentMode);
+function updateSliderFill(slider) {
+    if (!slider) return;
+    const min = Number(slider.min || 0);
+    const max = Number(slider.max || 100);
+    const val = Number(slider.value || min);
+    const pct = max > min ? ((val - min) / (max - min)) * 100 : 0;
+    slider.style.setProperty('--progress', `${Math.max(0, Math.min(100, pct))}%`);
 }
 
 function openExternalUrl(url) {
@@ -144,7 +127,7 @@ function openFeedback() {
         `- App Version: v${appVersion}`,
         `- OS: ${osName}`,
         `- Sync Mode: ${currentMode}`,
-        `- Browser Extensions Linked: ${activeBridgeCount}`,
+        `- Browser Extensions Linked: ${activeBridgeCount} (${activeBridgeClients.join(', ') || 'none'})`,
         '',
         '### Feedback / Bug Description',
         'Describe what happened or what you would like improved:'
@@ -153,7 +136,147 @@ function openFeedback() {
     openExternalUrl(url);
 }
 
-// --- window controls (Tauri Window API + IPC fallback) ---
+function normalizeDomain(raw) {
+    let val = String(raw || '').trim().toLowerCase();
+    val = val.replace(/^https?:\/\//, '');
+    val = val.split('/')[0].split('?')[0].split(':')[0];
+    val = val.replace(/^www\./, '');
+    return /^[a-z0-9.-]+\.[a-z]{2,}$/.test(val) ? val : '';
+}
+
+function switchTab(tab) {
+    const valid = ['setup', 'console', 'rules', 'settings'];
+    if (!valid.includes(tab)) tab = 'console';
+    currentTab = tab;
+
+    vSetup.style.display = tab === 'setup' ? 'flex' : 'none';
+    vDash.style.display = tab === 'console' ? 'flex' : 'none';
+    vRules.style.display = tab === 'rules' ? 'flex' : 'none';
+    vSettings.style.display = tab === 'settings' ? 'flex' : 'none';
+
+    const showTabs = tab !== 'setup';
+    if (appTabs) {
+        appTabs.style.display = showTabs ? 'grid' : 'none';
+        appTabs.querySelectorAll('.tab-btn').forEach((btn) => {
+            btn.classList.toggle('active', btn.dataset.tab === tab);
+        });
+    }
+
+    if (tab === 'console') {
+        updateDashForMode(currentMode);
+    }
+}
+
+function updateBridgeStatus(count, clients = []) {
+    activeBridgeCount = Math.max(0, Number(count) || 0);
+    if (Array.isArray(clients) && clients.length > 0) {
+        activeBridgeClients = clients;
+    } else if (activeBridgeCount === 0) {
+        activeBridgeClients = [];
+    }
+
+    const extHelp = document.getElementById('ext-help');
+    if (activeBridgeCount > 0) {
+        pExt.classList.add('on');
+        pExt.textContent = activeBridgeCount > 1 ? `linked (${activeBridgeCount})` : 'linked';
+        if (extClientsLabel) {
+            extClientsLabel.textContent = activeBridgeClients.length > 0 ? `(${activeBridgeClients.join(' · ')})` : '';
+        }
+        if (extHelp) extHelp.style.display = 'none';
+        if (setupStepExt) setupStepExt.classList.add('on');
+        if (setupExtPill) {
+            setupExtPill.classList.add('on');
+            setupExtPill.textContent = activeBridgeClients[0] || 'linked';
+        }
+    } else {
+        pExt.classList.remove('on');
+        pExt.textContent = 'unlinked';
+        if (extClientsLabel) extClientsLabel.textContent = '';
+        if (extHelp) extHelp.style.display = 'block';
+        if (setupStepExt) setupStepExt.classList.remove('on');
+        if (setupExtPill) {
+            setupExtPill.classList.remove('on');
+            setupExtPill.textContent = 'waiting';
+        }
+    }
+}
+
+function syncDuckSliders(val) {
+    const clean = Math.max(5, Math.min(60, Number(val) || 20));
+    if (duckLevelSlider) {
+        duckLevelSlider.value = clean;
+        updateSliderFill(duckLevelSlider);
+    }
+    if (dashDuckSlider) {
+        dashDuckSlider.value = clean;
+        updateSliderFill(dashDuckSlider);
+    }
+    if (duckLevelNum) duckLevelNum.textContent = clean + '%';
+    if (dashDuckNum) dashDuckNum.textContent = clean + '%';
+}
+
+function updateDashForMode(mode) {
+    currentMode = mode;
+    const isUniv = mode === 'universal';
+
+    const btnUniv = document.getElementById('mode-universal');
+    const btnSpot = document.getElementById('mode-spotify');
+    if (btnUniv && btnSpot) {
+        btnUniv.classList.toggle('active', isUniv);
+        btnSpot.classList.toggle('active', !isUniv);
+    }
+
+    if (dashModePills) {
+        dashModePills.querySelectorAll('.seg-btn').forEach((btn) => {
+            btn.classList.toggle('active', btn.dataset.mode === mode);
+        });
+    }
+
+    const volSection = document.getElementById('vol-section');
+    if (volSection) volSection.style.display = isUniv ? 'none' : 'block';
+
+    const refreshBtn = document.getElementById('refresh-device');
+    if (refreshBtn) refreshBtn.style.display = isUniv ? 'none' : 'flex';
+
+    const mediaConnName = document.getElementById('media-conn-name');
+    if (mediaConnName) mediaConnName.textContent = isUniv ? 'Media Player' : 'Spotify';
+
+    if (isUniv) {
+        pSpotify.classList.add('on');
+        pSpotify.textContent = 'active';
+    } else if (isSpotifyReady) {
+        pSpotify.classList.add('on');
+        pSpotify.textContent = 'connected';
+    } else {
+        pSpotify.classList.remove('on');
+        pSpotify.textContent = 'connect needed';
+    }
+}
+
+function setSyncModeAndNavigate(mode) {
+    updateDashForMode(mode);
+    invoke('set_sync_mode', { mode }).catch(console.error);
+    if (mode === 'spotify' && isSpotifyReady) {
+        invoke('get_spotify_volume').then((vol) => {
+            volSlider.value = vol;
+            volNum.textContent = vol + '%';
+            updateSliderFill(volSlider);
+        }).catch(() => {});
+    }
+}
+
+function goDash() {
+    switchTab('console');
+    if (currentMode === 'spotify') {
+        invoke('get_spotify_volume').then((vol) => {
+            volSlider.value = vol;
+            volNum.textContent = vol + '%';
+            updateSliderFill(volSlider);
+        }).catch(() => {});
+    }
+}
+
+// --- Window Controls ---
 window.__minApp = async (e) => {
     if (e) e.stopPropagation();
     try {
@@ -172,108 +295,63 @@ window.__closeApp = async (e) => {
     }
 };
 
-const minBtn = document.getElementById('win-min');
-const closeBtn = document.getElementById('win-close');
-if (minBtn) minBtn.onclick = window.__minApp;
-if (closeBtn) closeBtn.onclick = window.__closeApp;
+document.getElementById('win-min')?.addEventListener('click', window.__minApp);
+document.getElementById('win-close')?.addEventListener('click', window.__closeApp);
 
-function switchView(toSettings) {
-    const activeView = vSetup.style.display !== 'none' ? vSetup : vDash;
-    if (toSettings) {
-        activeView.classList.add('fade-out');
-        setTimeout(() => {
-            activeView.style.display = 'none';
-            activeView.classList.remove('fade-out');
-            vSettings.style.display = 'flex';
-            vSettings.classList.add('fade-in');
-            setTimeout(() => vSettings.classList.remove('fade-in'), 300);
-        }, 300);
-        winSettingsBtn.style.display = 'none';
+winSettingsBtn?.addEventListener('click', () => {
+    if (currentTab === 'settings') {
+        const backTab = (!isSpotifyReady && currentMode === 'spotify') ? 'setup' : 'console';
+        switchTab(backTab);
     } else {
-        vSettings.classList.add('fade-out');
-        setTimeout(() => {
-            vSettings.style.display = 'none';
-            vSettings.classList.remove('fade-out');
-            const targetView = (currentMode === 'spotify' && !isSpotifyReady) ? vSetup : vDash;
-            targetView.style.display = 'flex';
-            targetView.classList.add('fade-in');
-            setTimeout(() => {
-                targetView.classList.remove('fade-in');
-                if (targetView === vDash) updateDashForMode(currentMode);
-            }, 300);
-        }, 300);
-        winSettingsBtn.style.display = 'flex';
+        switchTab('settings');
     }
-}
+});
 
-winSettingsBtn.addEventListener('click', () => switchView(true));
-settingsBack.addEventListener('click', () => switchView(false));
-
-// --- Switch to Universal Mode from Setup Screen ---
-const btnSwitchUniversal = document.getElementById('btn-switch-universal');
-if (btnSwitchUniversal) {
-    btnSwitchUniversal.addEventListener('click', async () => {
-        await invoke('set_sync_mode', { mode: 'universal' }).catch(console.error);
-        currentMode = 'universal';
-        updateDashForMode('universal');
-        goDash();
+if (appTabs) {
+    appTabs.querySelectorAll('.tab-btn').forEach((btn) => {
+        btn.addEventListener('click', () => switchTab(btn.dataset.tab));
     });
 }
 
-// --- spotify dashboard link ---
-document.getElementById('open-dash').addEventListener('click', () => {
-    invoke('open_url', { url: 'https://developer.spotify.com/dashboard' }).catch(() => {
-        window.__TAURI__?.shell?.open('https://developer.spotify.com/dashboard');
-    });
+// --- Setup Screen Interactions ---
+document.getElementById('btn-switch-universal')?.addEventListener('click', async () => {
+    await invoke('set_sync_mode', { mode: 'universal' }).catch(console.error);
+    currentMode = 'universal';
+    goDash();
 });
 
-// --- copy redirect uri ---
-document.getElementById('copy-uri').addEventListener('click', function () {
-    navigator.clipboard.writeText('http://127.0.0.1:8921/callback').then(() => {
-        this.textContent = 'Copied!';
-        setTimeout(() => { this.textContent = 'Copy'; }, 1500);
-    });
+document.getElementById('open-dash')?.addEventListener('click', () => {
+    openExternalUrl('https://developer.spotify.com/dashboard');
 });
 
-// --- github star links ---
-document.getElementById('star-setup').addEventListener('click', (e) => {
-    e.preventDefault();
-    openGithub();
-});
-document.getElementById('star-dash').addEventListener('click', (e) => {
-    e.preventDefault();
-    openGithub();
-});
-document.getElementById('feedback-setup')?.addEventListener('click', (e) => {
-    e.preventDefault();
-    openFeedback();
-});
-document.getElementById('feedback-dash')?.addEventListener('click', (e) => {
-    e.preventDefault();
-    openFeedback();
-});
+function wireCopyButton(btnId, textToCopy) {
+    const btn = document.getElementById(btnId);
+    if (!btn) return;
+    btn.addEventListener('click', () => {
+        navigator.clipboard.writeText(textToCopy).then(() => {
+            btn.textContent = 'Copied!';
+            setTimeout(() => { btn.textContent = 'Copy'; }, 1500);
+        }).catch(() => {});
+    });
+}
+wireCopyButton('copy-uri', 'http://127.0.0.1:8921/callback');
+wireCopyButton('copy-obs-uri', 'http://127.0.0.1:9877/overlay');
+
+document.getElementById('star-setup')?.addEventListener('click', (e) => { e.preventDefault(); openGithub(); });
+document.getElementById('star-dash')?.addEventListener('click', (e) => { e.preventDefault(); openGithub(); });
+document.getElementById('feedback-setup')?.addEventListener('click', (e) => { e.preventDefault(); openFeedback(); });
+document.getElementById('feedback-dash')?.addEventListener('click', (e) => { e.preventDefault(); openFeedback(); });
 document.getElementById('open-feedback')?.addEventListener('click', openFeedback);
+document.getElementById('open-ext-download')?.addEventListener('click', () => openExternalUrl(`${GITHUB}/releases`));
+document.getElementById('open-ext-dash')?.addEventListener('click', () => openExternalUrl(`${GITHUB}/releases`));
 
-// --- extension download link ---
-document.getElementById('open-ext-download').addEventListener('click', () => {
-    openExternalUrl(`${GITHUB}/releases`);
-});
-document.getElementById('open-ext-dash').addEventListener('click', () => {
-    openExternalUrl(`${GITHUB}/releases`);
-});
-
-// --- advanced setup toggle ---
-const advancedToggle = document.getElementById('advanced-toggle');
-const advancedSection = document.getElementById('advanced-section');
-
-advancedToggle.addEventListener('click', () => {
+advancedToggle?.addEventListener('click', () => {
     const isOpen = advancedSection.style.display !== 'none';
     advancedSection.style.display = isOpen ? 'none' : 'block';
     advancedToggle.classList.toggle('open', !isOpen);
 });
 
-// --- connect to spotify ---
-document.getElementById('btn-connect').addEventListener('click', async () => {
+document.getElementById('btn-connect')?.addEventListener('click', async () => {
     const customId = clientId.value.trim();
     const effectiveId = customId || null;
 
@@ -285,15 +363,12 @@ document.getElementById('btn-connect').addEventListener('click', async () => {
         label.textContent = 'Waiting for Spotify...';
         spin.style.display = 'block';
         btn.disabled = true;
-
         await invoke('start_auth', { clientId: effectiveId });
     } catch (e) {
         console.error('Spotify auth error:', e);
         label.textContent = 'Enter Client ID below ↓';
         spin.style.display = 'none';
         btn.disabled = false;
-        
-        // Auto-expand advanced section if custom Client ID is needed
         if (advancedSection) {
             advancedSection.style.display = 'block';
             advancedToggle.classList.add('open');
@@ -302,12 +377,10 @@ document.getElementById('btn-connect').addEventListener('click', async () => {
     }
 });
 
-// --- refresh device ---
-document.getElementById('refresh-device').addEventListener('click', async () => {
+document.getElementById('refresh-device')?.addEventListener('click', async () => {
     const btn = document.getElementById('refresh-device');
     const orig = btn.innerHTML;
     btn.textContent = 'Searching...';
-
     try {
         await invoke('refresh_spotify_device');
         btn.textContent = '✓ Device found';
@@ -322,46 +395,94 @@ document.getElementById('refresh-device').addEventListener('click', async () => 
             pSpotify.textContent = 'no device';
         }
     }
-
     setTimeout(() => { btn.innerHTML = orig; }, 2000);
 });
 
-// --- volume (debounced & synced) ---
+// --- Volume & Ducking Controls ---
 let isDraggingVolume = false;
+['mousedown', 'touchstart'].forEach(evt => volSlider?.addEventListener(evt, () => { isDraggingVolume = true; }));
+['mouseup', 'mouseleave', 'touchend'].forEach(evt => volSlider?.addEventListener(evt, () => {
+    setTimeout(() => { isDraggingVolume = false; }, 500);
+}));
 
-['mousedown', 'touchstart'].forEach(evt => 
-    volSlider.addEventListener(evt, () => isDraggingVolume = true)
-);
-
-['mouseup', 'mouseleave', 'touchend'].forEach(evt => 
-    volSlider.addEventListener(evt, () => {
-        setTimeout(() => isDraggingVolume = false, 500);
-    })
-);
-
-volSlider.addEventListener('input', (e) => {
-    const v = parseInt(e.target.value);
+volSlider?.addEventListener('input', (e) => {
+    const v = parseInt(e.target.value, 10);
     volNum.textContent = v + '%';
-
+    updateSliderFill(volSlider);
     clearTimeout(volTimer);
     volTimer = setTimeout(() => {
-        invoke('set_volume', { vol: v }).catch(() => { });
+        invoke('set_volume', { vol: v }).catch(() => {});
     }, 250);
 });
 
-// --- Ducking level slider ---
-duckLevelSlider.addEventListener('input', (e) => {
-    const v = parseInt(e.target.value);
-    duckLevelNum.textContent = v + '%';
-
+function handleDuckInput(val) {
+    syncDuckSliders(val);
     clearTimeout(duckTimer);
-    duckTimer = setTimeout(() => {
-        saveSettings();
-    }, 250);
+    duckTimer = setTimeout(saveSettings, 250);
+}
+duckLevelSlider?.addEventListener('input', (e) => handleDuckInput(e.target.value));
+dashDuckSlider?.addEventListener('input', (e) => handleDuckInput(e.target.value));
+
+// --- Snooze Controls ---
+if (snoozeChips) {
+    snoozeChips.querySelectorAll('.chip-btn').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+            if (btn.id === 'snooze-resume-btn') {
+                await invoke('snooze_sync', { minutes: 0, untilRestart: false }).catch(console.error);
+            } else if (btn.dataset.restart === 'true') {
+                await invoke('snooze_sync', { minutes: null, untilRestart: true }).catch(console.error);
+            } else {
+                const mins = parseInt(btn.dataset.mins || '15', 10);
+                await invoke('snooze_sync', { minutes: mins, untilRestart: false }).catch(console.error);
+            }
+            fetchTrackInfo();
+        });
+    });
+}
+
+// --- Smart Audio & HUD Settings ---
+if (dashModePills) {
+    dashModePills.querySelectorAll('.seg-btn').forEach((btn) => {
+        btn.addEventListener('click', () => setSyncModeAndNavigate(btn.dataset.mode));
+    });
+}
+document.getElementById('mode-universal')?.addEventListener('click', () => setSyncModeAndNavigate('universal'));
+document.getElementById('mode-spotify')?.addEventListener('click', () => setSyncModeAndNavigate('spotify'));
+
+function updateRewindUiVisibility() {
+    if (rewindConfigRow) {
+        rewindConfigRow.style.display = smartRewindToggle.checked ? 'flex' : 'none';
+    }
+}
+
+smartRewindToggle?.addEventListener('change', () => {
+    updateRewindUiVisibility();
+    saveSettings();
 });
 
-// --- Mic action segmented control ---
-micAwareToggle.addEventListener('change', () => {
+if (rewindSecsSelector) {
+    rewindSecsSelector.querySelectorAll('.seg-btn').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            rewindSecsSelector.querySelectorAll('.seg-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            smartRewindSeconds = parseInt(btn.dataset.secs || '5', 10);
+            saveSettings();
+        });
+    });
+}
+
+if (rewindThreshSelector) {
+    rewindThreshSelector.querySelectorAll('.seg-btn').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            rewindThreshSelector.querySelectorAll('.seg-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            smartRewindThresholdSecs = parseInt(btn.dataset.thresh || '30', 10);
+            saveSettings();
+        });
+    });
+}
+
+micAwareToggle?.addEventListener('change', () => {
     if (micActionRow) {
         micActionRow.style.display = micAwareToggle.checked ? 'flex' : 'none';
     }
@@ -369,7 +490,7 @@ micAwareToggle.addEventListener('change', () => {
 });
 
 if (micActionSelector) {
-    micActionSelector.querySelectorAll('.seg-btn').forEach(btn => {
+    micActionSelector.querySelectorAll('.seg-btn').forEach((btn) => {
         btn.addEventListener('click', () => {
             micActionSelector.querySelectorAll('.seg-btn').forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
@@ -379,28 +500,42 @@ if (micActionSelector) {
     });
 }
 
-// --- Mini-HUD toggle ---
-miniHudToggle.addEventListener('change', (e) => {
+miniHudToggle?.addEventListener('change', (e) => {
     invoke('toggle_mini_hud', { show: e.target.checked }).catch(console.error);
     saveSettings();
 });
 spinArtToggle?.addEventListener('change', saveSettings);
+hudLockToggle?.addEventListener('change', saveSettings);
 
-// --- Smart Rewind toggle ---
-smartRewindToggle.addEventListener('change', saveSettings);
+if (hudModeSelector) {
+    hudModeSelector.querySelectorAll('.seg-btn').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            hudModeSelector.querySelectorAll('.seg-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            currentHudMode = btn.dataset.hudMode || 'pinned';
+            saveSettings();
+        });
+    });
+}
 
-let appVersion = '3.0.1';
-let latestUpdateUrl = '';
+syncToggle?.addEventListener('change', () => {
+    if (syncToggle.checked) {
+        invoke('snooze_sync', { minutes: 0, untilRestart: false }).catch(() => {});
+    }
+    saveSettings();
+});
+autostartToggle?.addEventListener('change', saveSettings);
+autostartMinimizedToggle?.addEventListener('change', saveSettings);
+minimizeToTrayToggle?.addEventListener('change', saveSettings);
 
+// --- Updates & Banners ---
 function isNewerVersion(latest, current) {
     const a = String(latest || '').replace(/^v/i, '').split('.').map(n => parseInt(n, 10) || 0);
     const b = String(current || '').replace(/^v/i, '').split('.').map(n => parseInt(n, 10) || 0);
     const len = Math.max(a.length, b.length, 3);
     for (let i = 0; i < len; i++) {
-        const av = a[i] || 0;
-        const bv = b[i] || 0;
-        if (av > bv) return true;
-        if (av < bv) return false;
+        if ((a[i] || 0) > (b[i] || 0)) return true;
+        if ((a[i] || 0) < (b[i] || 0)) return false;
     }
     return false;
 }
@@ -470,7 +605,6 @@ document.getElementById('whats-new-dismiss')?.addEventListener('click', (e) => {
     if (banner) banner.style.display = 'none';
 });
 
-// --- update check (throttled every 12h unless manual) ---
 async function checkUpdates(manual = false) {
     const statusText = document.getElementById('update-status');
     const checkBtn = document.getElementById('check-updates');
@@ -524,108 +658,162 @@ async function checkUpdates(manual = false) {
         checkBtn.disabled = false;
     }
 }
+document.getElementById('check-updates')?.addEventListener('click', () => checkUpdates(true));
 
-// --- settings toggles ---
-document.getElementById('mode-universal').addEventListener('click', () => {
-    updateDashForMode('universal');
-    invoke('set_sync_mode', { mode: 'universal' }).catch(console.error);
-});
-document.getElementById('mode-spotify').addEventListener('click', () => {
-    updateDashForMode('spotify');
-    invoke('set_sync_mode', { mode: 'spotify' }).catch(console.error);
-});
-syncToggle.addEventListener('change', saveSettings);
-autostartToggle.addEventListener('change', saveSettings);
-autostartMinimizedToggle.addEventListener('change', saveSettings);
-minimizeToTrayToggle.addEventListener('change', saveSettings);
-document.getElementById('check-updates').onclick = () => checkUpdates(true);
-
-// --- Save settings helper ---
+// --- Save Settings ---
 async function saveSettings() {
     try {
         await invoke('update_settings', {
             sync: syncToggle.checked,
-            vol: parseInt(volSlider.value) || 50,
+            vol: parseInt(volSlider.value, 10) || 50,
             autostart: autostartToggle.checked,
             autostartMinimized: autostartMinimizedToggle.checked,
             minimizeToTray: minimizeToTrayToggle.checked,
             siteActions: siteActions,
-            duckingLevel: parseInt(duckLevelSlider.value) || 20,
+            duckingLevel: parseInt(duckLevelSlider.value, 10) || 20,
             smartRewindEnabled: smartRewindToggle.checked,
             smartRewindSeconds: smartRewindSeconds,
+            smartRewindThresholdSecs: smartRewindThresholdSecs,
             micAwareEnabled: micAwareToggle.checked,
             micAction: currentMicAction,
             miniHudEnabled: miniHudToggle.checked,
-            albumArtSpin: spinArtToggle ? spinArtToggle.checked : true
+            albumArtSpin: spinArtToggle ? spinArtToggle.checked : true,
+            miniHudMode: currentHudMode,
+            miniHudLocked: hudLockToggle ? hudLockToggle.checked : false
         });
-        console.log('[STILLSOUND] Settings saved successfully:', { siteActions, duckingLevel: duckLevelSlider.value });
     } catch (e) {
         console.error('[STILLSOUND] Failed to save settings:', e);
     }
 }
 
-// --- render site action matrix ---
+// --- Site Rules Matrix + Presets + Custom Domains ---
+function buildSiteRow(site, defaultAction, isCustom) {
+    const row = document.createElement('div');
+    row.className = 'site-item';
+
+    const leftWrap = document.createElement('div');
+    leftWrap.style.display = 'flex';
+    leftWrap.style.alignItems = 'center';
+    leftWrap.style.gap = '6px';
+    leftWrap.style.minWidth = '0';
+
+    const label = document.createElement('span');
+    label.className = 'site-name';
+    label.textContent = site;
+    leftWrap.appendChild(label);
+
+    if (isCustom) {
+        const del = document.createElement('button');
+        del.className = 'site-del-btn';
+        del.type = 'button';
+        del.title = 'Remove custom domain';
+        del.textContent = '×';
+        del.addEventListener('click', async () => {
+            delete siteActions[site];
+            renderSiteMatrix();
+            await invoke('remove_site_action', { site }).catch(console.error);
+        });
+        leftWrap.appendChild(del);
+    }
+
+    const actionGroup = document.createElement('div');
+    actionGroup.className = 'site-actions-group';
+    const currentAction = siteActions[site] || defaultAction;
+
+    [
+        { key: 'pause', label: 'Pause' },
+        { key: 'duck', label: 'Duck' },
+        { key: 'ignore', label: 'Ignore' }
+    ].forEach((act) => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = `site-act-btn ${currentAction === act.key ? 'active' : ''}`;
+        btn.dataset.action = act.key;
+        btn.textContent = act.label;
+        btn.addEventListener('click', async () => {
+            actionGroup.querySelectorAll('.site-act-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            siteActions[site] = act.key;
+            await invoke('set_site_action', { site, action: act.key }).catch(console.error);
+        });
+        actionGroup.appendChild(btn);
+    });
+
+    row.appendChild(leftWrap);
+    row.appendChild(actionGroup);
+    return row;
+}
+
 function renderSiteMatrix() {
-    const sitesList = document.getElementById('sites-list');
     if (!sitesList) return;
+    const filter = (siteSearchInput?.value || '').trim().toLowerCase();
     sitesList.innerHTML = '';
 
-    for (const [group, sites] of Object.entries(SITE_GROUPS)) {
-        const groupHeader = document.createElement('div');
-        groupHeader.style.fontSize = '10px';
-        groupHeader.style.textTransform = 'uppercase';
-        groupHeader.style.letterSpacing = '0.05em';
-        groupHeader.style.color = 'rgba(255, 255, 255, 0.4)';
-        groupHeader.style.marginTop = sitesList.children.length > 0 ? '16px' : '0';
-        groupHeader.style.marginBottom = '6px';
-        groupHeader.textContent = group;
-        sitesList.appendChild(groupHeader);
+    const appendGroup = (title, items, defaultActionForGroup, isCustom) => {
+        const filtered = items.filter(s => !filter || s.includes(filter));
+        if (filtered.length === 0) return;
 
-        sites.forEach(site => {
-            const row = document.createElement('div');
-            row.className = 'site-item';
-            
-            const label = document.createElement('span');
-            label.className = 'site-name';
-            label.textContent = site;
-            
-            const actionGroup = document.createElement('div');
-            actionGroup.className = 'site-actions-group';
+        const hdr = document.createElement('div');
+        hdr.style.cssText = 'font-size:10px;text-transform:uppercase;letter-spacing:0.05em;color:var(--faint);margin-bottom:6px;';
+        hdr.style.marginTop = sitesList.children.length > 0 ? '14px' : '2px';
+        hdr.textContent = title;
+        sitesList.appendChild(hdr);
 
-            const defaultAction = group.includes("Social") ? "duck" : "pause";
-            const currentAction = siteActions[site] || defaultAction;
-
-            const actions = [
-                { key: 'pause', label: 'Pause' },
-                { key: 'duck', label: 'Duck' },
-                { key: 'ignore', label: 'Ignore' }
-            ];
-
-            actions.forEach(act => {
-                const btn = document.createElement('button');
-                btn.className = `site-act-btn ${currentAction === act.key ? 'active' : ''}`;
-                btn.dataset.action = act.key;
-                btn.textContent = act.label;
-
-                btn.addEventListener('click', async () => {
-                    actionGroup.querySelectorAll('.site-act-btn').forEach(b => b.classList.remove('active'));
-                    btn.classList.add('active');
-                    siteActions[site] = act.key;
-                    await invoke('set_site_action', { site: site, action: act.key }).catch(console.error);
-                    saveSettings();
-                });
-
-                actionGroup.appendChild(btn);
-            });
-            
-            row.appendChild(label);
-            row.appendChild(actionGroup);
-            sitesList.appendChild(row);
+        filtered.forEach((site) => {
+            sitesList.appendChild(buildSiteRow(site, defaultActionForGroup, isCustom));
         });
+    };
+
+    const customSites = Object.keys(siteActions)
+        .filter(s => !KNOWN_BUILTINS.has(s))
+        .sort();
+    appendGroup('Custom Domains', customSites, 'pause', true);
+
+    for (const [group, sites] of Object.entries(SITE_GROUPS)) {
+        const defaultAction = group.includes('Social') ? 'duck' : 'pause';
+        appendGroup(group, sites, defaultAction, false);
     }
 }
 
-// --- init ---
+siteSearchInput?.addEventListener('input', renderSiteMatrix);
+
+async function addCustomDomain() {
+    const clean = normalizeDomain(customDomainInput?.value);
+    if (!clean) {
+        customDomainInput?.classList.add('shake');
+        setTimeout(() => customDomainInput?.classList.remove('shake'), 400);
+        return;
+    }
+    siteActions[clean] = siteActions[clean] || 'pause';
+    if (customDomainInput) customDomainInput.value = '';
+    renderSiteMatrix();
+    await invoke('set_site_action', { site: clean, action: siteActions[clean] }).catch(console.error);
+}
+
+btnAddDomain?.addEventListener('click', addCustomDomain);
+customDomainInput?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') addCustomDomain();
+});
+
+if (presetBar) {
+    presetBar.querySelectorAll('.chip-btn').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+            presetBar.querySelectorAll('.chip-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            try {
+                const updated = await invoke('apply_site_preset', { preset: btn.dataset.preset });
+                if (updated) {
+                    siteActions = updated;
+                    renderSiteMatrix();
+                }
+            } catch (e) {
+                console.error(e);
+            }
+        });
+    });
+}
+
+// --- Init ---
 window.addEventListener('DOMContentLoaded', async () => {
     try {
         const s = await invoke('get_initial_state');
@@ -636,40 +824,42 @@ window.addEventListener('DOMContentLoaded', async () => {
         if (s.volume != null) {
             volSlider.value = s.volume;
             volNum.textContent = s.volume + '%';
+            updateSliderFill(volSlider);
         }
         syncToggle.checked = s.sync_enabled !== false;
         autostartToggle.checked = !!s.autostart;
         autostartMinimizedToggle.checked = !!s.autostart_minimized;
         minimizeToTrayToggle.checked = !!s.minimize_to_tray;
 
-        // Smart features init
-        if (s.ducking_level != null) {
-            duckLevelSlider.value = s.ducking_level;
-            duckLevelNum.textContent = s.ducking_level + '%';
-        }
-        smartRewindToggle.checked = s.smart_rewind_enabled !== false;
-        if (s.smart_rewind_seconds != null) {
-            smartRewindSeconds = s.smart_rewind_seconds;
-        }
-        micAwareToggle.checked = s.mic_aware_enabled !== false;
-        if (micActionRow) {
-            micActionRow.style.display = micAwareToggle.checked ? 'flex' : 'none';
-        }
-        currentMicAction = s.mic_action || 'duck';
-        if (micActionSelector) {
-            micActionSelector.querySelectorAll('.seg-btn').forEach(b => {
-                b.classList.toggle('active', b.dataset.action === currentMicAction);
-            });
-        }
-        miniHudToggle.checked = !!s.mini_hud_enabled;
-        if (spinArtToggle) {
-            spinArtToggle.checked = s.album_art_spin !== false;
-        }
-        
-        if (s.site_actions) {
-            siteActions = s.site_actions;
-        }
+        syncDuckSliders(s.ducking_level != null ? s.ducking_level : 20);
 
+        smartRewindToggle.checked = s.smart_rewind_enabled !== false;
+        smartRewindSeconds = s.smart_rewind_seconds || 5;
+        smartRewindThresholdSecs = s.smart_rewind_threshold_secs || 30;
+        rewindSecsSelector?.querySelectorAll('.seg-btn').forEach((b) => {
+            b.classList.toggle('active', parseInt(b.dataset.secs, 10) === smartRewindSeconds);
+        });
+        rewindThreshSelector?.querySelectorAll('.seg-btn').forEach((b) => {
+            b.classList.toggle('active', parseInt(b.dataset.thresh, 10) === smartRewindThresholdSecs);
+        });
+        updateRewindUiVisibility();
+
+        micAwareToggle.checked = s.mic_aware_enabled !== false;
+        if (micActionRow) micActionRow.style.display = micAwareToggle.checked ? 'flex' : 'none';
+        currentMicAction = s.mic_action || 'duck';
+        micActionSelector?.querySelectorAll('.seg-btn').forEach((b) => {
+            b.classList.toggle('active', b.dataset.action === currentMicAction);
+        });
+
+        miniHudToggle.checked = !!s.mini_hud_enabled;
+        if (spinArtToggle) spinArtToggle.checked = s.album_art_spin !== false;
+        if (hudLockToggle) hudLockToggle.checked = !!s.mini_hud_locked;
+        currentHudMode = s.mini_hud_mode || 'pinned';
+        hudModeSelector?.querySelectorAll('.seg-btn').forEach((b) => {
+            b.classList.toggle('active', b.dataset.hudMode === currentHudMode);
+        });
+
+        if (s.site_actions) siteActions = s.site_actions;
         renderSiteMatrix();
 
         updateBridgeStatus(s.active_bridges ? Object.keys(s.active_bridges).length : 0);
@@ -681,39 +871,86 @@ window.addEventListener('DOMContentLoaded', async () => {
         if (isSpotifyReady || currentMode === 'universal') {
             goDash();
         } else {
-            winSettingsBtn.style.display = 'flex';
+            switchTab('setup');
         }
 
         const version = await invoke('get_app_version');
         appVersion = version;
-        document.querySelectorAll('.footer-ver').forEach(el => {
+        document.querySelectorAll('.footer-ver').forEach((el) => {
             el.textContent = (el.textContent.includes('Studio') ? 'StillSound Studio v' : 'v') + version;
         });
 
         showWhatsNewIfNeeded(version);
         checkUpdates(false);
-        
         setInterval(fetchTrackInfo, 1500);
         fetchTrackInfo();
-        
     } catch (e) {
         console.error('init error:', e);
     }
 });
 
-// --- Dynamic Island Logic ---
-
-let currentTrackName = "";
+// --- Dynamic Island & Live Sync Polling ---
+let currentTrackName = '';
 let isPlaying = false;
 let lastVideoState = 'idle';
 let isOptimisticUpdate = false;
 let optimisticTimeout = null;
 
+function setLiveBadge(text, cls) {
+    if (!liveStatePill) return;
+    if (!text) {
+        liveStatePill.style.display = 'none';
+        liveStatePill.className = 'state-chip';
+        liveStatePill.textContent = '';
+        return;
+    }
+    liveStatePill.style.display = 'inline-block';
+    liveStatePill.className = `state-chip ${cls || ''}`.trim();
+    liveStatePill.textContent = text;
+}
+
+function updateSnoozeUi(info) {
+    const secs = info.snooze_remaining_secs;
+    const indef = !!info.snooze_indefinite;
+    const effective = info.sync_effective !== false;
+
+    if (snoozeResumeBtn) {
+        snoozeResumeBtn.style.display = (secs || indef) ? 'inline-block' : 'none';
+    }
+
+    if (snoozeChips) {
+        snoozeChips.querySelectorAll('.chip-btn').forEach((b) => {
+            if (b.dataset.restart === 'true') {
+                b.classList.toggle('active', indef);
+            } else if (b.dataset.mins) {
+                const m = parseInt(b.dataset.mins, 10);
+                const approxMatch = secs && !indef && (m === 15 ? secs <= 900 : secs > 900);
+                b.classList.toggle('active', !!approxMatch);
+            }
+        });
+    }
+
+    if (syncStatusDesc) {
+        if (!syncToggle.checked) {
+            syncStatusDesc.textContent = 'Turned off manually';
+        } else if (indef) {
+            syncStatusDesc.textContent = 'Snoozed until restart';
+        } else if (secs) {
+            const mins = Math.floor(secs / 60);
+            const remS = secs % 60;
+            syncStatusDesc.textContent = mins > 0 ? `Snoozed · ${mins}m ${remS}s left` : `Snoozed · ${remS}s left`;
+        } else {
+            syncStatusDesc.textContent = 'Monitoring videos & calls';
+        }
+    }
+    return effective;
+}
+
 async function fetchTrackInfo() {
     try {
         const info = await invoke('get_track_info');
         if (!info || info.type !== 'spotify_state') return;
-        
+
         if (info.track_name && info.track_name !== currentTrackName) {
             currentTrackName = info.track_name;
             trackName.textContent = info.track_name;
@@ -724,10 +961,11 @@ async function fetchTrackInfo() {
                 albumArt.onload = () => albumArt.classList.add('loaded');
             } else {
                 albumArt.classList.remove('loaded');
-                ambientBg.src = "";
+                albumArt.removeAttribute('src');
+                ambientBg.removeAttribute('src');
             }
         }
-        
+
         if (!info.track_name) {
             currentTrackName = '';
             trackName.textContent = 'Not Playing';
@@ -739,36 +977,55 @@ async function fetchTrackInfo() {
             ambientBg.removeAttribute('src');
         }
 
-        if (typeof info.active_bridge_count === 'number' && info.active_bridge_count !== activeBridgeCount) {
-            updateBridgeStatus(info.active_bridge_count);
+        if (setupStepPlayer && setupPlayerPill) {
+            const hasTrack = !!(info.track_name && info.track_name.length > 0);
+            setupStepPlayer.classList.toggle('on', hasTrack);
+            setupPlayerPill.classList.toggle('on', hasTrack);
+            setupPlayerPill.textContent = hasTrack ? (info.device_name || 'detected') : 'standby';
+        }
+
+        if (typeof info.active_bridge_count === 'number') {
+            updateBridgeStatus(info.active_bridge_count, info.bridge_clients || []);
         }
 
         if (!info.yt_playing && !info.app_paused_spotify && lastVideoState === 'playing') {
             lastVideoState = 'idle';
         }
-        
-        // Dynamic status row with Ducking & Mic awareness
-        if (info.is_ducked) {
+
+        const syncEffective = updateSnoozeUi(info);
+        musicSection.classList.remove('is-playing', 'paused', 'ducked', 'snoozed');
+
+        const hostLabel = info.active_video_host ? ` · ${info.active_video_host}` : '';
+        if (!syncEffective) {
+            musicSection.classList.add('snoozed');
+            setLiveBadge('SNOOZED', 'snoozed');
+            sSub.textContent = 'Auto-sync temporarily paused';
+        } else if (info.is_ducked) {
             musicSection.classList.add('ducked');
-            sSub.textContent = `Ducked (${info.ducking_level || 20}%) · Feed Video Active`;
+            setLiveBadge(`DUCK ${info.ducking_level || 20}%`, 'ducked');
+            sSub.textContent = info.active_video_host ? `Feed video${hostLabel}` : 'Lowered for feed video';
         } else if (info.mic_active) {
-            musicSection.classList.remove('ducked');
-            sSub.textContent = `Mic Active · Meeting in Progress`;
+            musicSection.classList.add('is-playing');
+            setLiveBadge('MIC ACTIVE', 'mic');
+            sSub.textContent = 'Call / microphone detected';
         } else if (lastVideoState === 'playing' || info.app_paused_spotify) {
-            musicSection.classList.remove('ducked');
-            sSub.textContent = 'Auto-paused by video';
+            musicSection.classList.add('paused');
+            setLiveBadge('PAUSED', 'paused');
+            sSub.textContent = info.active_video_host ? `Watching${hostLabel}` : 'Auto-paused by video';
         } else if (lastVideoState === 'paused') {
-            musicSection.classList.remove('ducked');
+            if (info.is_playing) musicSection.classList.add('is-playing');
+            setLiveBadge('');
             sSub.textContent = info.is_playing ? 'Video paused — enjoy your music' : 'Video paused';
         } else {
-            musicSection.classList.remove('ducked');
+            if (info.is_playing) musicSection.classList.add('is-playing');
+            setLiveBadge('');
             if (info.is_playing) {
                 sSub.textContent = info.device_name ? `Playing on ${info.device_name}` : 'Music playing';
             } else {
                 sSub.textContent = info.device_name ? `Connected to ${info.device_name}` : 'Studio ready';
             }
         }
-        
+
         if (!isOptimisticUpdate && info.is_playing !== isPlaying) {
             isPlaying = info.is_playing;
             if (isPlaying) {
@@ -781,15 +1038,15 @@ async function fetchTrackInfo() {
                 ambientBg.classList.remove('playing');
             }
         }
-        
-        // Sync Volume if not dragging
+
         if (info.volume_percent !== null && !isDraggingVolume) {
-            if (parseInt(volSlider.value) !== info.volume_percent) {
+            if (parseInt(volSlider.value, 10) !== info.volume_percent) {
                 volSlider.value = info.volume_percent;
                 volNum.textContent = info.volume_percent + '%';
+                updateSliderFill(volSlider);
             }
         }
-        
+
         try {
             const recap = await invoke('get_weekly_recap');
             const elFocus = document.getElementById('recap-focus');
@@ -799,20 +1056,18 @@ async function fetchTrackInfo() {
                 const fMins = recap.focus_minutes || 0;
                 const fHrs = Math.floor(fMins / 60);
                 elFocus.textContent = fHrs > 0 ? `${fHrs}h ${fMins % 60}m` : `${fMins}m`;
-                
+
                 const mMins = recap.music_minutes || 0;
                 const mHrs = Math.floor(mMins / 60);
                 elMusic.textContent = mHrs > 0 ? `${mHrs}h ${mMins % 60}m` : `${mMins}m`;
-                
+
                 elSaved.textContent = recap.auto_pause_count || 0;
             }
         } catch (err) {}
-    } catch (e) {
-        // silently fail on backend errors
-    }
+    } catch (e) {}
 }
 
-// Media Controls
+// --- Media Controls ---
 function debounceButton(btn, delay = 500) {
     if (!btn) return;
     btn.disabled = true;
@@ -825,14 +1080,13 @@ function debounceButton(btn, delay = 500) {
     }, delay);
 }
 
-btnPlayPause.addEventListener('click', async () => {
+btnPlayPause?.addEventListener('click', async () => {
     debounceButton(btnPlayPause, 500);
     isPlaying = !isPlaying;
-    
     isOptimisticUpdate = true;
     clearTimeout(optimisticTimeout);
     optimisticTimeout = setTimeout(() => { isOptimisticUpdate = false; }, 3000);
-    
+
     if (isPlaying) {
         iconPlay.classList.replace('visible', 'hidden');
         iconPause.classList.replace('hidden', 'visible');
@@ -846,24 +1100,22 @@ btnPlayPause.addEventListener('click', async () => {
     setTimeout(fetchTrackInfo, 500);
 });
 
-btnNext.addEventListener('click', async () => {
+btnNext?.addEventListener('click', async () => {
     debounceButton(btnNext, 500);
     await invoke('spotify_skip_track', { next: true }).catch(console.error);
     setTimeout(fetchTrackInfo, 500);
 });
 
-btnPrev.addEventListener('click', async () => {
+btnPrev?.addEventListener('click', async () => {
     debounceButton(btnPrev, 500);
     await invoke('spotify_skip_track', { next: false }).catch(console.error);
     setTimeout(fetchTrackInfo, 500);
 });
 
-// --- events ---
-
+// --- Tauri Live Events ---
 listen('auth_success', () => {
     isSpotifyReady = true;
     goDash();
-
     const tryRefresh = async (attempts) => {
         for (let i = 0; i < attempts; i++) {
             await new Promise(r => setTimeout(r, 1500));
@@ -872,7 +1124,7 @@ listen('auth_success', () => {
                 pSpotify.classList.add('on');
                 pSpotify.textContent = 'connected';
                 return;
-            } catch { /* retry */ }
+            } catch {}
         }
     };
     tryRefresh(3);
@@ -881,17 +1133,18 @@ listen('auth_success', () => {
 listen('bridge_linked', (ev) => {
     const count = typeof ev.payload === 'number' ? ev.payload : Math.max(1, activeBridgeCount + 1);
     updateBridgeStatus(count);
+    fetchTrackInfo();
 });
 
 listen('bridge_unlinked', (ev) => {
     const count = typeof ev.payload === 'number' ? ev.payload : 0;
     updateBridgeStatus(count);
+    fetchTrackInfo();
 });
 
 listen('sync_event', (ev) => {
     if (ev.payload === 'yt_playing') {
         lastVideoState = 'playing';
-        sSub.textContent = 'Auto-paused by video';
         fetchTrackInfo();
     } else if (ev.payload === 'yt_paused') {
         lastVideoState = 'paused';
@@ -899,18 +1152,37 @@ listen('sync_event', (ev) => {
     }
 });
 
-listen('mini_hud_toggled', (ev) => {
-    if (miniHudToggle) {
-        miniHudToggle.checked = !!ev.payload;
+listen('site_actions_updated', (ev) => {
+    if (ev.payload && typeof ev.payload === 'object') {
+        siteActions = ev.payload;
+        renderSiteMatrix();
     }
+});
+
+listen('mini_hud_toggled', (ev) => {
+    if (miniHudToggle) miniHudToggle.checked = !!ev.payload;
 });
 
 listen('hud_spin_changed', (ev) => {
-    if (spinArtToggle) {
-        spinArtToggle.checked = !!ev.payload;
+    if (spinArtToggle) spinArtToggle.checked = !!ev.payload;
+});
+
+listen('hud_prefs_changed', (ev) => {
+    const p = ev.payload || {};
+    if (typeof p.album_art_spin === 'boolean' && spinArtToggle) {
+        spinArtToggle.checked = p.album_art_spin;
+    }
+    if (typeof p.mini_hud_locked === 'boolean' && hudLockToggle) {
+        hudLockToggle.checked = p.mini_hud_locked;
+    }
+    if (typeof p.mini_hud_mode === 'string' && hudModeSelector) {
+        currentHudMode = p.mini_hud_mode;
+        hudModeSelector.querySelectorAll('.seg-btn').forEach((b) => {
+            b.classList.toggle('active', b.dataset.hudMode === currentHudMode);
+        });
     }
 });
 
-listen('mic_status', (ev) => {
+listen('mic_status', () => {
     fetchTrackInfo();
 });

@@ -6,6 +6,10 @@ All notable changes to **StillSound Studio** are documented here. See [README.md
 
 ### Added
 - **Spinning Mini-HUD Album Art Toggle (`album_art_spin`)**: Added Settings switch (`#spin-art-toggle`) so users can disable vinyl album rotation during lectures or focus sessions, switching Mini-HUD art to a calm rounded square.
+- **Timed Snooze & Dynamic Tray Status Badges**: Added `15m`, `1h`, and `Until Restart` Snooze Sync controls in both the Console UI and Tray menu (auto-expiring and restoring ducked/paused playback cleanly), plus state-tinted status dots on the tray icon.
+- **Peek-on-Action Mini-HUD & Lock Persistence**: Added **Pinned / Peek / Auto-Hide** visibility modes (gliding down briefly on pause, duck, or track changes when set to `Peek`), persisted HUD drag-lock state, and made HUD dragging unlocked by default.
+- **Console | Rules | Settings UI & Custom Domains**: Upgraded the desktop console with segmented tabs, Universal-first setup checklist, interactive Console **Sync Engine / Duck Level / Snooze** bar, searchable Site Rules with **`Study` / `Chill` / `Meeting` Presets**, **+ Add Custom Domain**, customizable Smart Rewind intervals (`3s–15s` / `10s–60s`), OBS Overlay copy card, and higher-contrast accessible sliders/scrollbars.
+- **1-Click Popup Rule Switcher**: Made the browser extension popup's active-tab rule row interactive (`[Pause | Duck | Ignore]`) with instant multi-browser sync, and sent browser names (`Brave`, `Firefox`, `Edge`, `Chrome`) to the Console.
 - **Multi-Browser Heartbeats & Bridge Count UI**: Added 20s WebSocket `Ping` heartbeats, 60s dead-socket cleanup, live `active_bridge_count` payloads (`linked` / `linked (N)` / `unlinked`), and Firefox MV3 1-click site-permission prompt in the extension popup.
 - **macOS Packaging Assets & Metadata**: Added `src-tauri/Info.plist` (`NSAppleEventsUsageDescription`, `NSMicrophoneUsageDescription`), multi-resolution `src-tauri/icons/icon.icns`, ad-hoc CI signing (`signingIdentity: "-"`), and `plutil -lint` check in CI.
 - **Update & Feedback UX**: Added OS-aware GitHub Releases semver update checks (`.exe`/`.dmg`/`.AppImage`), 12h check caching, Dashboard update & once-per-version "What's New" banners, and pre-filled GitHub issue feedback links.
@@ -21,7 +25,7 @@ All notable changes to **StillSound Studio** are documented here. See [README.md
 - Fixed Firefox Event Page & Chromium Service Worker cold-wake message drops and simultaneous multi-browser disconnections prematurely flipping status to `unlinked`.
 - Fixed the `.max(75)` ducking floor bug, Windows volume ducking leaking onto communication/system apps, and overlapping duck/unduck fade loops.
 - Fixed Firefox AMO MV3 metadata (`data_collection_permissions: ["none"]`, `strict_min_version: "140.0"`, `"storage"` permission) and missing `tiktok.com` manifest rules.
-- Fixed `"mini_hud"` ACL permissions in `capabilities/default.json`, macOS `data-tauri-drag-region` & `macOSPrivateApi` window support, cross-OS `settings.json` persistence path, Linux MPRIS pausing browsers, OAuth PKCE `state` validation & `204` token-refresh loops, `autostart_minimized`, `currentTrackName` empty-state reset, and 7-day weekly recap accuracy.
+- Fixed `"mini_hud"` ACL permissions in `capabilities/default.json`, macOS `data-tauri-drag-region` & `macOSPrivateApi` window support, cross-OS `settings.json` persistence path, Linux MPRIS pausing browsers, OAuth PKCE `state` validation & `204` token-refresh loops, `autostart_minimized`, `currentTrackName` empty-state reset, corrupted `#win-settings` header gear & mismatched Ducking `$` SVG icons, and 7-day weekly recap accuracy.
 
 ## [3.0.0]
 - Smooth Audio Ducking & Fade Engine, Per-Site Action Matrix (`Pause | Duck | Ignore`), Smart Rewind, Mic/Call-Aware Mode, and Floating Mini-HUD.
