@@ -170,6 +170,8 @@ pub struct AppState {
     pub app_gradient_enabled: bool,
     #[serde(default = "default_true")]
     pub ext_gradient_enabled: bool,
+    #[serde(default = "default_true")]
+    pub startup_splash_enabled: bool,
     #[serde(default)]
     pub mini_hud_pos: Option<(i32, i32)>,
     #[serde(default)]
@@ -272,14 +274,46 @@ fn normalize_hud_mode(mode: &str) -> String {
 }
 
 fn format_bridge_clients(clients: &HashMap<String, String>, count: usize) -> Vec<String> {
-    let mut names: Vec<String> = clients.values().cloned().collect();
-    names.sort();
-    names.dedup();
-    if names.is_empty() && count > 0 {
-        vec![if count == 1 { "Browser".to_string() } else { format!("{} Browsers", count) }]
-    } else {
-        names
+    let mut counts: std::collections::BTreeMap<String, usize> = std::collections::BTreeMap::new();
+    for name in clients.values() {
+        let trimmed = name.trim();
+        if !trimmed.is_empty() {
+            *counts.entry(trimmed.to_string()).or_insert(0) += 1;
+        }
     }
+    let mut result: Vec<String> = counts
+        .into_iter()
+        .map(|(name, n)| if n > 1 { format!("{} ×{}", name, n) } else { name })
+        .collect();
+    let known = clients.len();
+    if count > known {
+        let rem = count - known;
+        result.push(if rem == 1 { "Browser".to_string() } else { format!("{} Browsers", rem) });
+    }
+    result
+}
+
+fn infer_ws_client(origin: Option<&str>, user_agent: Option<&str>) -> Option<String> {
+    let ua = user_agent.unwrap_or("");
+    if origin.map(|o| o.starts_with("moz-extension://")).unwrap_or(false) || ua.contains("Firefox/") {
+        return Some("Firefox".to_string());
+    }
+    if origin.map(|o| o.starts_with("safari-web-extension://")).unwrap_or(false) {
+        return Some("Safari".to_string());
+    }
+    if ua.contains("Edg/") {
+        return Some("Edge".to_string());
+    }
+    if ua.contains("OPR/") || ua.contains("Opera") {
+        return Some("Opera".to_string());
+    }
+    if ua.contains("Vivaldi") {
+        return Some("Vivaldi".to_string());
+    }
+    if origin.map(|o| o.starts_with("chrome-extension://")).unwrap_or(false) {
+        return Some("Chrome".to_string());
+    }
+    None
 }
 
 fn apply_site_preset_map(map: &mut HashMap<String, SiteAction>, preset: &str) -> bool {
@@ -384,6 +418,7 @@ impl Default for AppState {
             mini_hud_scale: 100,
             app_gradient_enabled: true,
             ext_gradient_enabled: true,
+            startup_splash_enabled: true,
             mini_hud_pos: None,
             site_actions: {
                 let mut map = HashMap::new();
@@ -910,10 +945,13 @@ async fn start_extension_bridge<R: Runtime>(app: AppHandle<R>, state: Arc<Mutex<
 
         tauri::async_runtime::spawn(async move {
             let bridge_id = (rand::random::<u64>()).to_string();
+            let mut inferred_client: Option<String> = None;
             let ws_stream = match accept_hdr_async(
                 stream,
                 |req: &Request, resp: Response| -> Result<Response, ErrorResponse> {
-                    if let Some(origin) = req.headers().get("origin").and_then(|v| v.to_str().ok()) {
+                    let origin = req.headers().get("origin").and_then(|v| v.to_str().ok());
+                    let ua = req.headers().get("user-agent").and_then(|v| v.to_str().ok());
+                    if let Some(origin) = origin {
                         if !is_allowed_ws_origin(origin) {
                             let err = tokio_tungstenite::tungstenite::http::Response::builder()
                                 .status(StatusCode::FORBIDDEN)
@@ -922,6 +960,7 @@ async fn start_extension_bridge<R: Runtime>(app: AppHandle<R>, state: Arc<Mutex<
                             return Err(err);
                         }
                     }
+                    inferred_client = infer_ws_client(origin, ua);
                     Ok(resp)
                 },
             )
@@ -934,10 +973,13 @@ async fn start_extension_bridge<R: Runtime>(app: AppHandle<R>, state: Arc<Mutex<
                 }
             };
 
-            println!("[STILLSOUND] Extension Linked: {}", bridge_id);
+            println!("[STILLSOUND] Extension Linked: {} ({:?})", bridge_id, inferred_client);
             let linked_count = {
                 let mut s = state_clone.lock().unwrap();
                 s.active_bridges.insert(bridge_id.clone(), (false, SiteAction::Pause));
+                if let Some(client) = inferred_client {
+                    s.bridge_clients.insert(bridge_id.clone(), client);
+                }
                 s.active_bridges.len()
             };
             let _ = app_clone.emit("bridge_linked", linked_count);
@@ -1955,6 +1997,7 @@ fn update_settings(
     mini_hud_scale: Option<u32>,
     app_gradient_enabled: Option<bool>,
     ext_gradient_enabled: Option<bool>,
+    startup_splash_enabled: Option<bool>,
 ) -> Result<(), String> {
     use tauri_plugin_autostart::ManagerExt;
     
@@ -2021,6 +2064,9 @@ fn update_settings(
     }
     if let Some(ext_grad) = ext_gradient_enabled {
         s.ext_gradient_enabled = ext_grad;
+    }
+    if let Some(splash_en) = startup_splash_enabled {
+        s.startup_splash_enabled = splash_en;
     }
     let scale_to_apply = clamp_hud_scale(s.mini_hud_scale);
     if album_art_spin.is_some()
@@ -3020,5 +3066,22 @@ mod tests {
         assert_eq!(hud_logical_dimensions(100), (400.0, 62.0));
         assert_eq!(hud_logical_dimensions(60), (240.0, 38.0));
         assert_eq!(hud_logical_dimensions(175), (700.0, 109.0));
+    }
+
+    #[test]
+    fn format_bridge_clients_shows_multiple_and_counts() {
+        let mut clients = HashMap::new();
+        clients.insert("1".to_string(), "Firefox".to_string());
+        clients.insert("2".to_string(), "Brave".to_string());
+        assert_eq!(format_bridge_clients(&clients, 2), vec!["Brave", "Firefox"]);
+
+        let mut dupes = HashMap::new();
+        dupes.insert("1".to_string(), "Chrome".to_string());
+        dupes.insert("2".to_string(), "Chrome".to_string());
+        assert_eq!(format_bridge_clients(&dupes, 2), vec!["Chrome ×2"]);
+
+        let mut partial = HashMap::new();
+        partial.insert("1".to_string(), "Firefox".to_string());
+        assert_eq!(format_bridge_clients(&partial, 2), vec!["Firefox", "Browser"]);
     }
 }

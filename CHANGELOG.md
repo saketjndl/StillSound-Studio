@@ -5,6 +5,7 @@ All notable changes to **StillSound Studio** are documented here. See [README.md
 ## [3.0.1] - 2026-11-27
 
 ### Added
+- **Boot Readiness Startup Screen (`startup_splash_enabled`)**: Added a Discord-style launch overlay that verifies loaded studio preferences, audio/call monitor engine readiness, and browser bridge + linked client status (with rotating quips, weekly focus pulse, click-to-skip, and a **Startup Screen** toggle in Settings).
 - **Desktop & Extension Ambient Gradient Toggles (`app_gradient_enabled`, `ext_gradient_enabled`)**: Added separate accessibility contrast switches inside **Settings → Mini-HUD & Visuals** to toggle blurred album-art backdrop gradients in the Desktop Studio + Mini-HUD and in the Browser Extension popup (preserving album cover art while removing background color glow).
 - **Resizable Floating Mini-HUD (`mini_hud_scale`)**: Added a **Mini-HUD Size** slider (`60%–175%`) with click-to-reset pill, proportional OS window resizing + CSS zoom scaling, live drag preview, and playful quips when set extra small or extra large.
 - **Spinning Mini-HUD Album Art Toggle (`album_art_spin`)**: Added Settings switch (`#spin-art-toggle`) so users can disable vinyl album rotation during lectures or focus sessions, switching Mini-HUD art to a calm rounded square.
@@ -29,7 +30,7 @@ All notable changes to **StillSound Studio** are documented here. See [README.md
 - Fixed Firefox Event Page & Chromium Service Worker cold-wake message drops and simultaneous multi-browser disconnections prematurely flipping status to `unlinked`.
 - Fixed the `.max(75)` ducking floor bug, Windows volume ducking leaking onto communication/system apps, and overlapping duck/unduck fade loops.
 - Fixed Firefox AMO MV3 metadata (`data_collection_permissions: ["none"]`, `strict_min_version: "140.0"`, `"storage"` permission) and missing `tiktok.com` manifest rules.
-- Fixed `"mini_hud"` ACL permissions in `capabilities/default.json`, macOS `data-tauri-drag-region` & `macOSPrivateApi` window support, cross-OS `settings.json` persistence path, Linux MPRIS pausing browsers, OAuth PKCE `state` validation & `204` token-refresh loops, `autostart_minimized`, `currentTrackName` empty-state reset, corrupted `#win-settings` header gear & mismatched Ducking `$` SVG icons, Settings accordion scrollbar reflow/wrapping, Mini-HUD subtitle flex-ellipsis truncation, and 7-day weekly recap accuracy.
+- Fixed `"mini_hud"` ACL permissions in `capabilities/default.json`, macOS `data-tauri-drag-region` & `macOSPrivateApi` window support, cross-OS `settings.json` persistence path, Linux MPRIS pausing browsers, OAuth PKCE `state` validation & `204` token-refresh loops, `autostart_minimized`, `currentTrackName` empty-state reset, corrupted `#win-settings` header gear & mismatched Ducking `$` SVG icons, Settings accordion scrollbar reflow/wrapping, Mini-HUD subtitle flex-ellipsis truncation, multi-browser extension identification/display (`Brave` + `Firefox` + count suffix + single-line alignment), and 7-day weekly recap accuracy.
 
 ## [3.0.0]
 - Smooth Audio Ducking & Fade Engine, Per-Site Action Matrix (`Pause | Duck | Ignore`), Smart Rewind, Mic/Call-Aware Mode, and Floating Mini-HUD.

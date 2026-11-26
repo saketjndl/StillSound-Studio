@@ -33,11 +33,13 @@ let extGradientEnabled = true;
 
 function detectBrowserName() {
     if (isFirefox) return 'Firefox';
-    const ua = navigator.userAgent || '';
     if (navigator.brave) return 'Brave';
-    if (ua.includes('Edg/')) return 'Edge';
-    if (ua.includes('OPR/') || ua.includes('Opera')) return 'Opera';
-    if (ua.includes('Vivaldi')) return 'Vivaldi';
+    const ua = navigator.userAgent || '';
+    const brands = navigator.userAgentData?.brands || [];
+    if (brands.some((b) => /brave/i.test(b.brand))) return 'Brave';
+    if (brands.some((b) => /edge/i.test(b.brand)) || ua.includes('Edg/')) return 'Edge';
+    if (brands.some((b) => /opera/i.test(b.brand)) || ua.includes('OPR/') || ua.includes('Opera')) return 'Opera';
+    if (brands.some((b) => /vivaldi/i.test(b.brand)) || ua.includes('Vivaldi')) return 'Vivaldi';
     return 'Chrome';
 }
 let siteActions = {};
@@ -452,6 +454,13 @@ api.tabs.onReplaced?.addListener((_addedTabId, removedTabId) => {
 api.runtime.onMessage.addListener((message, sender, sendResponse) => {
     const handleAsync = async () => {
         await sessionReady;
+
+        if (message.type === 'identify_client' && message.client) {
+            if (socket && socket.readyState === WebSocket.OPEN) {
+                socket.send(JSON.stringify({ type: 'hello', client: String(message.client) }));
+            }
+            return { ok: true };
+        }
 
         if (message.type === 'get_status') {
             if (!isConnected) {

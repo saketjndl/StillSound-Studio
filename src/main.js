@@ -75,6 +75,7 @@ const extGradientToggle = document.getElementById('ext-gradient-toggle');
 const autostartToggle = document.getElementById('autostart-toggle');
 const autostartMinimizedToggle = document.getElementById('autostart-minimized-toggle');
 const minimizeToTrayToggle = document.getElementById('minimize-to-tray-toggle');
+const startupSplashToggle = document.getElementById('startup-splash-toggle');
 
 const GITHUB = 'https://github.com/saketjndl/StillSound-Studio';
 
@@ -657,6 +658,7 @@ syncToggle?.addEventListener('change', () => {
 autostartToggle?.addEventListener('change', saveSettings);
 autostartMinimizedToggle?.addEventListener('change', saveSettings);
 minimizeToTrayToggle?.addEventListener('change', saveSettings);
+startupSplashToggle?.addEventListener('change', saveSettings);
 
 // --- Updates & Banners ---
 function isNewerVersion(latest, current) {
@@ -922,7 +924,8 @@ async function saveSettings() {
             miniHudLocked: hudLockToggle ? hudLockToggle.checked : false,
             miniHudScale: currentHudScale,
             appGradientEnabled: appGradientToggle ? appGradientToggle.checked : true,
-            extGradientEnabled: extGradientToggle ? extGradientToggle.checked : true
+            extGradientEnabled: extGradientToggle ? extGradientToggle.checked : true,
+            startupSplashEnabled: startupSplashToggle ? startupSplashToggle.checked : true
         });
     } catch (e) {
         console.error('[STILLSOUND] Failed to save settings:', e);
@@ -1056,10 +1059,59 @@ if (presetBar) {
     });
 }
 
+const BOOT_QUIPS = [
+    'Keeping lo-fi out of your lecture notes...',
+    'Teaching social reels to use their indoor voice...',
+    'Calibrating focus shield & smooth volume fades...',
+    'Standing guard over your Alt-Tab budget...',
+    'Warming up Smart Rewind & call detection...'
+];
+
+function waitMs(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 // --- Init ---
 window.addEventListener('DOMContentLoaded', async () => {
+    const bootSplash = document.getElementById('boot-splash');
+    const bootQuip = document.getElementById('boot-quip');
+    const bootStepCfg = document.getElementById('boot-step-cfg');
+    const bootLblCfg = document.getElementById('boot-lbl-cfg');
+    const bootStepAudio = document.getElementById('boot-step-audio');
+    const bootLblAudio = document.getElementById('boot-lbl-audio');
+    const bootStepBridge = document.getElementById('boot-step-bridge');
+    const bootLblBridge = document.getElementById('boot-lbl-bridge');
+    const bootStat = document.getElementById('boot-stat');
+    const bootSkip = document.getElementById('boot-skip');
+
+    if (bootQuip) {
+        bootQuip.textContent = BOOT_QUIPS[Math.floor(Math.random() * BOOT_QUIPS.length)];
+    }
+
+    let splashDismissed = false;
+    const dismissSplash = (immediate = false) => {
+        if (!bootSplash || splashDismissed) return;
+        splashDismissed = true;
+        if (immediate) {
+            bootSplash.classList.add('instant-hide');
+            return;
+        }
+        bootSplash.classList.add('hiding');
+        setTimeout(() => bootSplash.classList.add('instant-hide'), 380);
+    };
+
+    bootSplash?.addEventListener('click', () => dismissSplash(false));
+    bootSkip?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        dismissSplash(false);
+    });
+
     try {
         const s = await invoke('get_initial_state');
+        const showSplash = s.startup_splash_enabled !== false;
+        if (!showSplash) {
+            dismissSplash(true);
+        }
 
         if (s.client_id && s.client_id !== 'PLACEHOLDER_STILLSOUND_CLIENT_ID') {
             clientId.value = s.client_id;
@@ -1073,6 +1125,7 @@ window.addEventListener('DOMContentLoaded', async () => {
         autostartToggle.checked = !!s.autostart;
         autostartMinimizedToggle.checked = !!s.autostart_minimized;
         minimizeToTrayToggle.checked = !!s.minimize_to_tray;
+        if (startupSplashToggle) startupSplashToggle.checked = showSplash;
 
         syncDuckSliders(s.ducking_level != null ? s.ducking_level : 20);
 
@@ -1132,9 +1185,65 @@ window.addEventListener('DOMContentLoaded', async () => {
         showWhatsNewIfNeeded(version);
         checkUpdates(false);
         setInterval(fetchTrackInfo, 1500);
+
+        if (showSplash && !splashDismissed) {
+            const ruleCount = Object.keys(siteActions || {}).length;
+            bootStepCfg?.classList.remove('active');
+            bootStepCfg?.classList.add('done');
+            if (bootLblCfg) bootLblCfg.textContent = `Workspace loaded · ${ruleCount} site rules ready`;
+            bootStepAudio?.classList.add('active');
+
+            const [probeInfo, recap] = await Promise.all([
+                invoke('get_track_info').catch(() => null),
+                invoke('get_weekly_recap').catch(() => null),
+                waitMs(360)
+            ]);
+
+            if (!splashDismissed) {
+                bootStepAudio?.classList.remove('active');
+                bootStepAudio?.classList.add('done');
+                if (bootLblAudio) {
+                    if (currentMode === 'universal') {
+                        bootLblAudio.textContent = s.mic_aware_enabled !== false
+                            ? 'Audio & Call Mic monitor armed (Universal)'
+                            : 'Universal desktop media engine ready';
+                    } else if (isSpotifyReady) {
+                        bootLblAudio.textContent = 'Spotify Cloud session verified';
+                    } else {
+                        bootLblAudio.textContent = 'Audio armed (Spotify connect needed)';
+                    }
+                }
+                bootStepBridge?.classList.add('active');
+                await waitMs(380);
+            }
+
+            if (!splashDismissed) {
+                bootStepBridge?.classList.remove('active');
+                bootStepBridge?.classList.add('done');
+                const bridges = probeInfo?.active_bridge_count || 0;
+                const clients = Array.isArray(probeInfo?.bridge_clients) ? probeInfo.bridge_clients : [];
+                if (bootLblBridge) {
+                    bootLblBridge.textContent = bridges > 0
+                        ? `Browser bridge linked (${clients.join(' · ') || bridges})`
+                        : 'Browser bridge listening on :9876';
+                }
+                if (bootStat) {
+                    if (probeInfo?.track_name) {
+                        bootStat.textContent = `Detected: ${probeInfo.track_name}`;
+                        bootStat.style.display = 'inline-block';
+                    } else if ((recap?.auto_pause_count || 0) > 0) {
+                        bootStat.textContent = `This week: ${recap.auto_pause_count} Alt-Tabs saved`;
+                        bootStat.style.display = 'inline-block';
+                    }
+                }
+                await waitMs(420);
+                dismissSplash(false);
+            }
+        }
         fetchTrackInfo();
     } catch (e) {
         console.error('init error:', e);
+        dismissSplash(true);
     }
 });
 

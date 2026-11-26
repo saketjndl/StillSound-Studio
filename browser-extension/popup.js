@@ -346,5 +346,8 @@ function getStatus() {
 }
 
 checkHostPermissions();
+if (!isFirefox && navigator.brave) {
+    sendRuntimeMessage({ type: 'identify_client', client: 'Brave' });
+}
 getStatus();
 setInterval(getStatus, 1000);

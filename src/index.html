@@ -45,6 +45,32 @@
             </div>
         </header>
 
+        <!-- Startup Readiness Splash Stage -->
+        <div class="boot-splash" id="boot-splash" role="status" aria-live="polite">
+            <div class="boot-emblem">
+                <div class="boot-ring"></div>
+                <img src="logo.png" class="boot-logo" alt="StillSound">
+            </div>
+            <div class="boot-title">StillSound Studio</div>
+            <div class="boot-quip" id="boot-quip">Tuning focus shield &amp; audio bridge...</div>
+            <div class="boot-steps">
+                <div class="boot-step active" id="boot-step-cfg">
+                    <span class="boot-dot"></span>
+                    <span class="boot-step-lbl" id="boot-lbl-cfg">Loading studio preferences...</span>
+                </div>
+                <div class="boot-step" id="boot-step-audio">
+                    <span class="boot-dot"></span>
+                    <span class="boot-step-lbl" id="boot-lbl-audio">Arming audio &amp; call monitor...</span>
+                </div>
+                <div class="boot-step" id="boot-step-bridge">
+                    <span class="boot-dot"></span>
+                    <span class="boot-step-lbl" id="boot-lbl-bridge">Connecting browser bridge (:9876)...</span>
+                </div>
+            </div>
+            <div class="boot-stat" id="boot-stat" style="display:none"></div>
+            <button class="boot-skip" id="boot-skip" type="button">Click anywhere to continue</button>
+        </div>
+
         <!-- Sub-Header Tab Bar (Console | Rules | Settings) -->
         <nav class="app-tabs" id="app-tabs" style="display:none">
             <span class="tab-glider" id="tab-glider" aria-hidden="true"></span>
@@ -270,7 +296,7 @@
                     <span class="conn-pill on" id="p-spotify">active</span>
                 </div>
                 <div class="conn-row">
-                    <span class="conn-name label-with-tip">Extension <span id="ext-clients-label" class="ext-clients"></span> <span class="info-tip" tabindex="0" data-tip="Live browser bridge status. Multiple browsers (e.g. Brave + Firefox) sync together and music only resumes once all videos stop.">i</span></span>
+                    <span class="conn-name label-with-tip"><span class="conn-title">Extension</span><span id="ext-clients-label" class="ext-clients"></span><span class="info-tip" tabindex="0" data-tip="Live browser bridge status. Multiple browsers (e.g. Brave + Firefox) sync together and music only resumes once all videos stop.">i</span></span>
                     <span class="conn-pill" id="p-ext">unlinked</span>
                 </div>
                 <div id="ext-help" class="note" style="margin-top: 10px; font-size: 10px;">
@@ -600,6 +626,16 @@
                                 </div>
                                 <label class="toggle">
                                     <input type="checkbox" id="minimize-to-tray-toggle">
+                                    <span class="toggle-track"></span>
+                                </label>
+                            </div>
+                            <div class="ctrl-row" style="margin-top: 12px;">
+                                <div class="ctrl-info">
+                                    <span class="ctrl-label label-with-tip">Startup Screen <span class="info-tip" tabindex="0" data-tip="Displays a brief boot checklist verifying workspace rules, audio engine, and browser bridge readiness when StillSound opens.">i</span></span>
+                                    <span class="ctrl-desc">Show live engine &amp; bridge check on launch.</span>
+                                </div>
+                                <label class="toggle">
+                                    <input type="checkbox" id="startup-splash-toggle" checked>
                                     <span class="toggle-track"></span>
                                 </label>
                             </div>
