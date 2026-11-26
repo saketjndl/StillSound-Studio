@@ -192,6 +192,8 @@ pub struct AppState {
     #[serde(skip)]
     pub bridge_clients: HashMap<String, String>,
     #[serde(skip)]
+    pub bridge_client_ids: HashMap<String, String>,
+    #[serde(skip)]
     pub active_video_host: Option<String>,
     #[serde(skip)]
     pub snooze_until: Option<u64>,
@@ -274,21 +276,18 @@ fn normalize_hud_mode(mode: &str) -> String {
 }
 
 fn format_bridge_clients(clients: &HashMap<String, String>, count: usize) -> Vec<String> {
-    let mut counts: std::collections::BTreeMap<String, usize> = std::collections::BTreeMap::new();
-    for name in clients.values() {
-        let trimmed = name.trim();
-        if !trimmed.is_empty() {
-            *counts.entry(trimmed.to_string()).or_insert(0) += 1;
-        }
-    }
-    let mut result: Vec<String> = counts
-        .into_iter()
-        .map(|(name, n)| if n > 1 { format!("{} ×{}", name, n) } else { name })
+    let mut result: Vec<String> = clients
+        .values()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
         .collect();
+    result.sort();
+    result.dedup();
     let known = clients.len();
-    if count > known {
-        let rem = count - known;
-        result.push(if rem == 1 { "Browser".to_string() } else { format!("{} Browsers", rem) });
+    if count > known && result.is_empty() {
+        result.push(if count == 1 { "Browser".to_string() } else { format!("{} Browsers", count) });
+    } else if count > known {
+        result.push("Browser".to_string());
     }
     result
 }
@@ -428,6 +427,7 @@ impl Default for AppState {
             enabled_sites: HashMap::new(),
             active_bridges: HashMap::new(),
             bridge_clients: HashMap::new(),
+            bridge_client_ids: HashMap::new(),
             active_video_host: None,
             snooze_until: None,
             snooze_indefinite: false,
@@ -946,6 +946,7 @@ async fn start_extension_bridge<R: Runtime>(app: AppHandle<R>, state: Arc<Mutex<
         tauri::async_runtime::spawn(async move {
             let bridge_id = (rand::random::<u64>()).to_string();
             let mut inferred_client: Option<String> = None;
+            let mut is_chromium_origin = false;
             let ws_stream = match accept_hdr_async(
                 stream,
                 |req: &Request, resp: Response| -> Result<Response, ErrorResponse> {
@@ -958,6 +959,9 @@ async fn start_extension_bridge<R: Runtime>(app: AppHandle<R>, state: Arc<Mutex<
                                 .body(Some("Forbidden WebSocket origin".to_string()))
                                 .unwrap();
                             return Err(err);
+                        }
+                        if origin.starts_with("chrome-extension://") {
+                            is_chromium_origin = true;
                         }
                     }
                     inferred_client = infer_ws_client(origin, ua);
@@ -977,8 +981,8 @@ async fn start_extension_bridge<R: Runtime>(app: AppHandle<R>, state: Arc<Mutex<
             let linked_count = {
                 let mut s = state_clone.lock().unwrap();
                 s.active_bridges.insert(bridge_id.clone(), (false, SiteAction::Pause));
-                if let Some(client) = inferred_client {
-                    s.bridge_clients.insert(bridge_id.clone(), client);
+                if let Some(ref client) = inferred_client {
+                    s.bridge_clients.insert(bridge_id.clone(), client.clone());
                 }
                 s.active_bridges.len()
             };
@@ -1067,11 +1071,32 @@ async fn start_extension_bridge<R: Runtime>(app: AppHandle<R>, state: Arc<Mutex<
                                     let _ = write.send(tokio_tungstenite::tungstenite::Message::Text(r#"{"type":"pong"}"#.to_string())).await;
                                 }
                                 "hello" => {
-                                    let client = event["client"].as_str().unwrap_or("Browser").trim();
-                                    let label = if client.is_empty() { "Browser" } else { client };
+                                    let raw_client = event["client"].as_str().unwrap_or("Browser").trim();
+                                    let label = if raw_client.is_empty() {
+                                        inferred_client.as_deref().unwrap_or("Browser")
+                                    } else if is_chromium_origin && raw_client.eq_ignore_ascii_case("firefox") {
+                                        inferred_client.as_deref().unwrap_or("Chrome")
+                                    } else {
+                                        raw_client
+                                    };
+                                    let client_uuid = event["client_id"].as_str().map(|c| c.trim().to_string()).filter(|c| !c.is_empty());
                                     println!("[STILLSOUND] Extension identified as {} ({})", label, bridge_id);
                                     let count = {
                                         let mut s = state_clone.lock().unwrap();
+                                        if let Some(ref cid) = client_uuid {
+                                            let stale_ids: Vec<String> = s
+                                                .bridge_client_ids
+                                                .iter()
+                                                .filter(|(bid, existing_cid)| *bid != &bridge_id && *existing_cid == cid)
+                                                .map(|(bid, _)| bid.clone())
+                                                .collect();
+                                            for old_bid in stale_ids {
+                                                s.active_bridges.remove(&old_bid);
+                                                s.bridge_clients.remove(&old_bid);
+                                                s.bridge_client_ids.remove(&old_bid);
+                                            }
+                                            s.bridge_client_ids.insert(bridge_id.clone(), cid.clone());
+                                        }
                                         s.bridge_clients.insert(bridge_id.clone(), label.to_string());
                                         s.active_bridges.len()
                                     };
@@ -1203,6 +1228,7 @@ async fn start_extension_bridge<R: Runtime>(app: AppHandle<R>, state: Arc<Mutex<
             let remaining_count = {
                 let mut s = state_clone.lock().unwrap();
                 s.bridge_clients.remove(&bridge_id);
+                s.bridge_client_ids.remove(&bridge_id);
                 s.active_bridges.len()
             };
             let _ = app_clone.emit("bridge_unlinked", remaining_count);
@@ -3076,9 +3102,9 @@ mod tests {
         assert_eq!(format_bridge_clients(&clients, 2), vec!["Brave", "Firefox"]);
 
         let mut dupes = HashMap::new();
-        dupes.insert("1".to_string(), "Chrome".to_string());
-        dupes.insert("2".to_string(), "Chrome".to_string());
-        assert_eq!(format_bridge_clients(&dupes, 2), vec!["Chrome ×2"]);
+        dupes.insert("1".to_string(), "Firefox".to_string());
+        dupes.insert("2".to_string(), "Firefox".to_string());
+        assert_eq!(format_bridge_clients(&dupes, 2), vec!["Firefox"]);
 
         let mut partial = HashMap::new();
         partial.insert("1".to_string(), "Firefox".to_string());

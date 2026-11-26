@@ -1,4 +1,12 @@
-const isFirefox = typeof browser !== 'undefined';
+const extRuntime = typeof browser !== 'undefined' ? browser : chrome;
+const isFirefox = (() => {
+    try {
+        if (extRuntime?.runtime?.getURL) {
+            return extRuntime.runtime.getURL('').startsWith('moz-extension://');
+        }
+    } catch (e) {}
+    return /Firefox\//i.test(navigator.userAgent || '');
+})();
 const api = isFirefox ? browser : chrome;
 const SOCIAL_DOMAINS = ['twitter.com', 'x.com', 'reddit.com', 'instagram.com', 'facebook.com', 'tiktok.com'];
 

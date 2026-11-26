@@ -102,6 +102,18 @@ input:focus-visible {
     z-index: 1;
 }
 
+.shell.boot-pending .app-tabs,
+.shell.boot-pending .views-stage {
+    visibility: hidden;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.app-tabs,
+.views-stage {
+    transition: opacity 0.25s ease;
+}
+
 /* --- Titlebar --- */
 
 .titlebar {
@@ -1787,7 +1799,7 @@ input[type="range"]::-moz-range-thumb {
     bottom: 0;
     left: 0;
     z-index: 500;
-    background: radial-gradient(circle at 50% 34%, rgba(255, 76, 0, 0.12) 0%, rgba(10, 10, 13, 0.98) 62%, #000000 100%);
+    background: radial-gradient(circle at 50% 34%, #1b0b04 0%, #09090b 60%, #000000 100%);
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -1796,7 +1808,7 @@ input[type="range"]::-moz-range-thumb {
     text-align: center;
     cursor: pointer;
     user-select: none;
-    transition: opacity 0.36s ease, transform 0.36s cubic-bezier(0.22, 1, 0.36, 1);
+    transition: opacity 0.24s ease, transform 0.24s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .boot-splash.instant-hide {
@@ -1805,7 +1817,7 @@ input[type="range"]::-moz-range-thumb {
 
 .boot-splash.hiding {
     opacity: 0;
-    transform: scale(1.025);
+    transform: scale(0.975);
     pointer-events: none;
 }
 

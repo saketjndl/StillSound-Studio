@@ -1,5 +1,13 @@
 // StillSound Background Bridge v3.0
-const isFirefox = typeof browser !== 'undefined';
+const extRuntime = typeof browser !== 'undefined' ? browser : chrome;
+const isFirefox = (() => {
+    try {
+        if (extRuntime?.runtime?.getURL) {
+            return extRuntime.runtime.getURL('').startsWith('moz-extension://');
+        }
+    } catch (e) {}
+    return /Firefox\//i.test(navigator.userAgent || '');
+})();
 const api = isFirefox ? browser : chrome;
 const PORTS = [9876, 9878, 9880, 9882];
 const SOCIAL_DOMAINS = ['twitter.com', 'x.com', 'reddit.com', 'instagram.com', 'facebook.com', 'tiktok.com'];
@@ -30,6 +38,50 @@ let spotifyInfo = {
     ducking_level: 20
 };
 let extGradientEnabled = true;
+const CLIENT_UUID_KEY = 'stillsound_client_uuid_v1';
+const BROWSER_NAME_KEY = 'stillsound_browser_name_v1';
+let bridgeClientUuid = '';
+let cachedBrowserName = '';
+
+async function ensureBridgeClientUuid() {
+    if (bridgeClientUuid) return bridgeClientUuid;
+    try {
+        const localStore = api.storage?.local;
+        if (localStore) {
+            const keys = [CLIENT_UUID_KEY, BROWSER_NAME_KEY];
+            const items = await new Promise((resolve) => {
+                if (isFirefox) {
+                    localStore.get(keys).then(resolve).catch(() => resolve({}));
+                } else {
+                    localStore.get(keys, (res) => {
+                        if (chrome.runtime?.lastError) resolve({});
+                        else resolve(res || {});
+                    });
+                }
+            });
+            if (items && typeof items[BROWSER_NAME_KEY] === 'string' && items[BROWSER_NAME_KEY]) {
+                cachedBrowserName = items[BROWSER_NAME_KEY];
+            }
+            if (items && typeof items[CLIENT_UUID_KEY] === 'string' && items[CLIENT_UUID_KEY]) {
+                bridgeClientUuid = items[CLIENT_UUID_KEY];
+                return bridgeClientUuid;
+            }
+        }
+    } catch (e) {}
+
+    bridgeClientUuid = (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function')
+        ? crypto.randomUUID()
+        : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+
+    try {
+        const localStore = api.storage?.local;
+        if (localStore) {
+            const res = localStore.set({ [CLIENT_UUID_KEY]: bridgeClientUuid });
+            if (res && typeof res.then === 'function') res.catch(() => {});
+        }
+    } catch (e) {}
+    return bridgeClientUuid;
+}
 
 function detectBrowserName() {
     if (isFirefox) return 'Firefox';
@@ -37,6 +89,7 @@ function detectBrowserName() {
     const ua = navigator.userAgent || '';
     const brands = navigator.userAgentData?.brands || [];
     if (brands.some((b) => /brave/i.test(b.brand))) return 'Brave';
+    if (cachedBrowserName && cachedBrowserName !== 'Firefox') return cachedBrowserName;
     if (brands.some((b) => /edge/i.test(b.brand)) || ua.includes('Edg/')) return 'Edge';
     if (brands.some((b) => /opera/i.test(b.brand)) || ua.includes('OPR/') || ua.includes('Opera')) return 'Opera';
     if (brands.some((b) => /vivaldi/i.test(b.brand)) || ua.includes('Vivaldi')) return 'Vivaldi';
@@ -251,7 +304,8 @@ function connect() {
         }
         persistSessionState();
 
-        sendToApp({ type: 'hello', client: detectBrowserName() });
+        const clientId = await ensureBridgeClientUuid();
+        sendToApp({ type: 'hello', client: detectBrowserName(), client_id: clientId });
 
         // Request live status verification from any open matching tabs after reconnect/wake
         const matches = api.runtime.getManifest().content_scripts?.[0]?.matches || [];
@@ -456,8 +510,17 @@ api.runtime.onMessage.addListener((message, sender, sendResponse) => {
         await sessionReady;
 
         if (message.type === 'identify_client' && message.client) {
+            const name = String(message.client).trim();
+            if (name && (!isFirefox || name === 'Firefox')) {
+                cachedBrowserName = name;
+                try {
+                    const res = api.storage?.local?.set({ [BROWSER_NAME_KEY]: name });
+                    if (res && typeof res.then === 'function') res.catch(() => {});
+                } catch (e) {}
+            }
             if (socket && socket.readyState === WebSocket.OPEN) {
-                socket.send(JSON.stringify({ type: 'hello', client: String(message.client) }));
+                const clientId = await ensureBridgeClientUuid();
+                socket.send(JSON.stringify({ type: 'hello', client: name || detectBrowserName(), client_id: clientId }));
             }
             return { ok: true };
         }

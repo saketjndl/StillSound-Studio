@@ -2,7 +2,15 @@
     if (window.__stillsoundContentInitialized) return;
     window.__stillsoundContentInitialized = true;
 
-    const isFirefox = typeof browser !== 'undefined';
+    const extRuntime = typeof browser !== 'undefined' ? browser : chrome;
+    const isFirefox = (() => {
+        try {
+            if (extRuntime?.runtime?.getURL) {
+                return extRuntime.runtime.getURL('').startsWith('moz-extension://');
+            }
+        } catch (e) {}
+        return /Firefox\//i.test(navigator.userAgent || '');
+    })();
     const api = isFirefox ? browser : chrome;
     const attachedVideos = new WeakSet();
 
