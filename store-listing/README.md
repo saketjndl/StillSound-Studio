@@ -72,7 +72,7 @@ To create the release zip file for upload to the Chrome Web Store or Firefox AMO
 # On Windows / Linux / macOS:
 # Create a zip of the browser-extension folder (excluding unnecessary files)
 cd browser-extension
-zip -r ../StillSound-Extension-v2.0.0.zip . -x "*.DS_Store*" "*.git*"
+zip -r ../StillSound-Extension-v3.1.0.zip . -x "*.DS_Store*" "*.git*"
 ```
 
-Upload `StillSound-Extension-v2.0.0.zip` directly to the Chrome Developer Dashboard or Firefox Add-on Developer Hub!
+Upload `StillSound-Extension-v3.1.0.zip` directly to the Chrome Developer Dashboard or Firefox Add-on Developer Hub!
