@@ -27,6 +27,25 @@ let isSpotifyPlaying = false;
 let isOptimisticUpdate = false;
 let optimisticTimeout = null;
 let pollCount = 0;
+let currentTabHostname = '';
+
+const siteSeg = document.getElementById('site-seg');
+if (siteSeg) {
+    siteSeg.querySelectorAll('.site-seg-btn').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            if (!currentTabHostname) return;
+            const action = btn.dataset.action;
+            siteSeg.querySelectorAll('.site-seg-btn').forEach((b) => {
+                b.classList.toggle('active', b.dataset.action === action);
+            });
+            sendRuntimeMessage({
+                type: 'set_site_action',
+                site: currentTabHostname,
+                action
+            }, () => getStatus());
+        });
+    });
+}
 
 function matchesDomain(hostname, domain) {
     return hostname === domain || hostname.endsWith('.' + domain);
@@ -183,23 +202,17 @@ function updateUI(res) {
                 if (url.protocol !== 'http:' && url.protocol !== 'https:') return;
 
                 const hostname = url.hostname.replace(/^www\./, '');
+                currentTabHostname = hostname;
                 const siteRow = document.getElementById('site-action-row');
                 const siteLabel = document.getElementById('current-site-label');
-                const sitePill = document.getElementById('site-action-pill');
                 if (siteRow && hostname) {
                     siteRow.style.display = 'flex';
                     siteLabel.textContent = hostname;
                     const action = resolveSiteAction(hostname, res.siteActions || {});
-                    sitePill.textContent = action.toUpperCase();
-                    if (action === 'duck') {
-                        sitePill.className = 'status-pill active';
-                        sitePill.style.background = '#ffaa00';
-                    } else if (action === 'ignore') {
-                        sitePill.className = 'status-pill off';
-                        sitePill.style.background = '';
-                    } else {
-                        sitePill.className = 'status-pill ok';
-                        sitePill.style.background = '';
+                    if (siteSeg) {
+                        siteSeg.querySelectorAll('.site-seg-btn').forEach((btn) => {
+                            btn.classList.toggle('active', btn.dataset.action === action);
+                        });
                     }
                 }
             } catch (e) {}

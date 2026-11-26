@@ -30,7 +30,15 @@ let spotifyInfo = {
     ducking_level: 20
 };
 
-// Site action matrix (configured from Tauri desktop app)
+function detectBrowserName() {
+    if (isFirefox) return 'Firefox';
+    const ua = navigator.userAgent || '';
+    if (navigator.brave) return 'Brave';
+    if (ua.includes('Edg/')) return 'Edge';
+    if (ua.includes('OPR/') || ua.includes('Opera')) return 'Opera';
+    if (ua.includes('Vivaldi')) return 'Vivaldi';
+    return 'Chrome';
+}
 let siteActions = {};
 
 function updateBadge(connected) {
@@ -236,7 +244,7 @@ function connect() {
         }
         persistSessionState();
 
-        sendToApp({ type: 'hello', client: isFirefox ? 'Firefox' : 'Chromium' });
+        sendToApp({ type: 'hello', client: detectBrowserName() });
 
         // Request live status verification from any open matching tabs after reconnect/wake
         const matches = api.runtime.getManifest().content_scripts?.[0]?.matches || [];
@@ -459,6 +467,18 @@ api.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 socket.send(JSON.stringify({ type: message.type }));
             }
             return { ok: true };
+        }
+
+        if (message.type === 'set_site_action' && message.site && message.action) {
+            const cleanSite = message.site.toLowerCase().replace(/^www\./, '');
+            siteActions[cleanSite] = message.action;
+            for (const entry of tabStates.values()) {
+                entry.action = getSiteAction(entry.hostname);
+            }
+            persistSessionState();
+            updateAggregateState(true);
+            sendToApp({ type: 'set_site_action', site: cleanSite, action: message.action });
+            return { ok: true, siteActions };
         }
 
         if (!sender.tab) return null;

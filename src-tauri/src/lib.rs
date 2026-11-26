@@ -159,6 +159,10 @@ pub struct AppState {
     pub mini_hud_enabled: bool,
     #[serde(default = "default_true")]
     pub album_art_spin: bool,
+    #[serde(default = "default_hud_mode")]
+    pub mini_hud_mode: String,
+    #[serde(default)]
+    pub mini_hud_locked: bool,
     #[serde(default)]
     pub mini_hud_pos: Option<(i32, i32)>,
     #[serde(default)]
@@ -177,6 +181,14 @@ pub struct AppState {
     #[serde(skip)]
     pub active_bridges: HashMap<String, (bool, SiteAction)>,
     #[serde(skip)]
+    pub bridge_clients: HashMap<String, String>,
+    #[serde(skip)]
+    pub active_video_host: Option<String>,
+    #[serde(skip)]
+    pub snooze_until: Option<u64>,
+    #[serde(skip)]
+    pub snooze_indefinite: bool,
+    #[serde(skip)]
     pub video_pause_instant: Option<Instant>,
     #[serde(skip)]
     pub mic_pause_instant: Option<Instant>,
@@ -193,6 +205,99 @@ fn default_ducking_level() -> u32 { 20 }
 fn default_rewind_seconds() -> u32 { 5 }
 fn default_rewind_threshold() -> u32 { 30 }
 fn default_mic_action() -> SiteAction { SiteAction::Duck }
+fn default_hud_mode() -> String { "pinned".to_string() }
+
+fn is_sync_active(s: &AppState) -> bool {
+    if !s.sync_enabled || s.snooze_indefinite {
+        return false;
+    }
+    if let Some(until) = s.snooze_until {
+        if current_unix_secs() < until {
+            return false;
+        }
+    }
+    true
+}
+
+fn snooze_remaining_secs(s: &AppState) -> Option<u64> {
+    let until = s.snooze_until?;
+    let now = current_unix_secs();
+    if until > now {
+        Some(until - now)
+    } else {
+        None
+    }
+}
+
+fn parse_site_action(action: &str) -> SiteAction {
+    match action {
+        "duck" => SiteAction::Duck,
+        "ignore" => SiteAction::Ignore,
+        _ => SiteAction::Pause,
+    }
+}
+
+fn normalize_hud_mode(mode: &str) -> String {
+    match mode {
+        "autohide" | "peek" | "pinned" => mode.to_string(),
+        _ => "pinned".to_string(),
+    }
+}
+
+fn format_bridge_clients(clients: &HashMap<String, String>, count: usize) -> Vec<String> {
+    let mut names: Vec<String> = clients.values().cloned().collect();
+    names.sort();
+    names.dedup();
+    if names.is_empty() && count > 0 {
+        vec![if count == 1 { "Browser".to_string() } else { format!("{} Browsers", count) }]
+    } else {
+        names
+    }
+}
+
+fn apply_site_preset_map(map: &mut HashMap<String, SiteAction>, preset: &str) -> bool {
+    const STREAMING: [&str; 9] = [
+        "youtube.com", "netflix.com", "primevideo.com", "hotstar.com",
+        "disneyplus.com", "twitch.tv", "crunchyroll.com", "vimeo.com", "jiocinema.com",
+    ];
+    const SOCIAL: [&str; 6] = [
+        "twitter.com", "x.com", "reddit.com", "instagram.com", "facebook.com", "tiktok.com",
+    ];
+    const EDUCATIONAL: [&str; 4] = [
+        "udemy.com", "coursera.org", "khanacademy.org", "nptel.ac.in",
+    ];
+    const CONFERENCING: [&str; 3] = [
+        "meet.google.com", "zoom.us", "teams.microsoft.com",
+    ];
+
+    match preset {
+        "study" => {
+            for s in STREAMING.iter().chain(EDUCATIONAL.iter()).chain(CONFERENCING.iter()).chain(SOCIAL.iter()) {
+                map.insert((*s).to_string(), SiteAction::Pause);
+            }
+            true
+        }
+        "chill" => {
+            for s in STREAMING.iter().chain(EDUCATIONAL.iter()).chain(CONFERENCING.iter()) {
+                map.insert((*s).to_string(), SiteAction::Pause);
+            }
+            for s in SOCIAL.iter() {
+                map.insert((*s).to_string(), SiteAction::Duck);
+            }
+            true
+        }
+        "meeting" => {
+            for s in CONFERENCING.iter().chain(STREAMING.iter()).chain(EDUCATIONAL.iter()) {
+                map.insert((*s).to_string(), SiteAction::Pause);
+            }
+            for s in SOCIAL.iter() {
+                map.insert((*s).to_string(), SiteAction::Ignore);
+            }
+            true
+        }
+        _ => false,
+    }
+}
 
 impl Default for AppState {
     fn default() -> Self {
@@ -230,29 +335,20 @@ impl Default for AppState {
             mic_paused_or_ducked: false,
             mini_hud_enabled: false,
             album_art_spin: true,
+            mini_hud_mode: "pinned".to_string(),
+            mini_hud_locked: false,
             mini_hud_pos: None,
             site_actions: {
                 let mut map = HashMap::new();
-                // Streaming -> Pause
-                for s in &["youtube.com", "netflix.com", "primevideo.com", "hotstar.com", "disneyplus.com", "twitch.tv", "crunchyroll.com", "vimeo.com", "jiocinema.com"] {
-                    map.insert(s.to_string(), SiteAction::Pause);
-                }
-                // Social Media -> Duck
-                for s in &["twitter.com", "x.com", "reddit.com", "instagram.com", "facebook.com", "tiktok.com"] {
-                    map.insert(s.to_string(), SiteAction::Duck);
-                }
-                // Educational -> Pause
-                for s in &["udemy.com", "coursera.org", "khanacademy.org", "nptel.ac.in"] {
-                    map.insert(s.to_string(), SiteAction::Pause);
-                }
-                // Conferencing -> Pause
-                for s in &["meet.google.com", "zoom.us", "teams.microsoft.com"] {
-                    map.insert(s.to_string(), SiteAction::Pause);
-                }
+                apply_site_preset_map(&mut map, "chill");
                 map
             },
             enabled_sites: HashMap::new(),
             active_bridges: HashMap::new(),
+            bridge_clients: HashMap::new(),
+            active_video_host: None,
+            snooze_until: None,
+            snooze_indefinite: false,
             video_pause_instant: None,
             mic_pause_instant: None,
             duck_generation: 0,
@@ -574,7 +670,23 @@ async fn get_spotify_track_info(state: &Arc<Mutex<AppState>>) -> serde_json::Val
 
 /// Mode-aware track info: returns Spotify or SMTC data depending on sync_mode
 async fn get_current_track_info(state: &Arc<Mutex<AppState>>) -> serde_json::Value {
-    let (mode, yt_playing, app_paused, is_ducked, mic_active, duck_level, bridge_count, album_art_spin) = {
+    let (
+        mode,
+        yt_playing,
+        app_paused,
+        is_ducked,
+        mic_active,
+        duck_level,
+        bridge_count,
+        bridge_clients,
+        album_art_spin,
+        mini_hud_mode,
+        mini_hud_locked,
+        active_video_host,
+        snooze_secs,
+        snooze_indefinite,
+        sync_effective,
+    ) = {
         let s = state.lock().unwrap();
         (
             s.sync_mode.clone(),
@@ -584,7 +696,14 @@ async fn get_current_track_info(state: &Arc<Mutex<AppState>>) -> serde_json::Val
             s.mic_active,
             s.ducking_level,
             s.active_bridges.len(),
+            format_bridge_clients(&s.bridge_clients, s.active_bridges.len()),
             s.album_art_spin,
+            s.mini_hud_mode.clone(),
+            s.mini_hud_locked,
+            s.active_video_host.clone(),
+            snooze_remaining_secs(&s),
+            s.snooze_indefinite,
+            is_sync_active(&s),
         )
     };
     let mut val = match mode {
@@ -614,7 +733,14 @@ async fn get_current_track_info(state: &Arc<Mutex<AppState>>) -> serde_json::Val
         obj.insert("mic_active".to_string(), serde_json::Value::Bool(mic_active));
         obj.insert("ducking_level".to_string(), serde_json::Value::Number(duck_level.into()));
         obj.insert("active_bridge_count".to_string(), serde_json::Value::Number(bridge_count.into()));
+        obj.insert("bridge_clients".to_string(), serde_json::json!(bridge_clients));
         obj.insert("album_art_spin".to_string(), serde_json::Value::Bool(album_art_spin));
+        obj.insert("mini_hud_mode".to_string(), serde_json::Value::String(mini_hud_mode));
+        obj.insert("mini_hud_locked".to_string(), serde_json::Value::Bool(mini_hud_locked));
+        obj.insert("active_video_host".to_string(), serde_json::json!(active_video_host));
+        obj.insert("snooze_remaining_secs".to_string(), serde_json::json!(snooze_secs));
+        obj.insert("snooze_indefinite".to_string(), serde_json::Value::Bool(snooze_indefinite));
+        obj.insert("sync_effective".to_string(), serde_json::Value::Bool(sync_effective));
     }
     val
 }
@@ -832,8 +958,32 @@ async fn start_extension_bridge<R: Runtime>(app: AppHandle<R>, state: Arc<Mutex<
                                     let _ = write.send(tokio_tungstenite::tungstenite::Message::Text(r#"{"type":"pong"}"#.to_string())).await;
                                 }
                                 "hello" => {
-                                    let client = event["client"].as_str().unwrap_or("unknown");
-                                    println!("[STILLSOUND] Extension identified as {} ({})", client, bridge_id);
+                                    let client = event["client"].as_str().unwrap_or("Browser").trim();
+                                    let label = if client.is_empty() { "Browser" } else { client };
+                                    println!("[STILLSOUND] Extension identified as {} ({})", label, bridge_id);
+                                    let count = {
+                                        let mut s = state_clone.lock().unwrap();
+                                        s.bridge_clients.insert(bridge_id.clone(), label.to_string());
+                                        s.active_bridges.len()
+                                    };
+                                    let _ = app_clone.emit("bridge_linked", count);
+                                }
+                                "set_site_action" => {
+                                    if let (Some(site), Some(act_str)) = (event["site"].as_str(), event["action"].as_str()) {
+                                        let clean_site = site.trim().to_lowercase();
+                                        let clean_site = clean_site.strip_prefix("www.").unwrap_or(&clean_site).to_string();
+                                        if !clean_site.is_empty() {
+                                            let act = parse_site_action(act_str);
+                                            let actions_snapshot = {
+                                                let mut s = state_clone.lock().unwrap();
+                                                s.site_actions.insert(clean_site, act);
+                                                s.save();
+                                                broadcast_site_config(&s.site_actions);
+                                                s.site_actions.clone()
+                                            };
+                                            let _ = app_clone.emit("site_actions_updated", actions_snapshot);
+                                        }
+                                    }
                                 }
                                 "get_spotify_info" => {
                                     let info = get_current_track_info(&state_clone).await;
@@ -843,11 +993,11 @@ async fn start_extension_bridge<R: Runtime>(app: AppHandle<R>, state: Arc<Mutex<
                                 }
                                 "spotify_play" => {
                                     println!("[STILLSOUND] Extension requested: PLAY");
-                                    let (device_id, yt_playing, sync_enabled) = {
+                                    let (device_id, yt_playing, sync_active) = {
                                         let mut s = state_clone.lock().unwrap();
                                         s.manual_pause_detected = false;
                                         s.app_paused_spotify = false;
-                                        (s.current_device_id.clone(), s.yt_playing, s.sync_enabled)
+                                        (s.current_device_id.clone(), s.yt_playing, is_sync_active(&s))
                                     };
 
                                     match media_control(&state_clone, true, device_id.clone()).await {
@@ -855,7 +1005,7 @@ async fn start_extension_bridge<R: Runtime>(app: AppHandle<R>, state: Arc<Mutex<
                                         Err(e) => println!("[STILLSOUND] Play command failed: {}", e),
                                     }
 
-                                    if yt_playing && sync_enabled {
+                                    if yt_playing && sync_active {
                                         tokio::time::sleep(std::time::Duration::from_millis(200)).await;
                                         let _ = media_control(&state_clone, false, device_id).await;
                                         let mut s = state_clone.lock().unwrap();
@@ -896,9 +1046,9 @@ async fn start_extension_bridge<R: Runtime>(app: AppHandle<R>, state: Arc<Mutex<
                                 }
                                 "spotify_next" | "spotify_prev" => {
                                     let is_next = event_type == "spotify_next";
-                                    let (device_id, yt_playing, sync_enabled) = {
+                                    let (device_id, yt_playing, sync_active) = {
                                         let s = state_clone.lock().unwrap();
-                                        (s.current_device_id.clone(), s.yt_playing, s.sync_enabled)
+                                        (s.current_device_id.clone(), s.yt_playing, is_sync_active(&s))
                                     };
 
                                     match media_skip(&state_clone, is_next, device_id.clone()).await {
@@ -906,7 +1056,7 @@ async fn start_extension_bridge<R: Runtime>(app: AppHandle<R>, state: Arc<Mutex<
                                         Err(e) => println!("[STILLSOUND] Skip command failed: {}", e),
                                     }
 
-                                    if yt_playing && sync_enabled {
+                                    if yt_playing && sync_active {
                                         tokio::time::sleep(std::time::Duration::from_millis(300)).await;
                                         let _ = media_control(&state_clone, false, device_id).await;
                                         let mut s = state_clone.lock().unwrap();
@@ -940,8 +1090,12 @@ async fn start_extension_bridge<R: Runtime>(app: AppHandle<R>, state: Arc<Mutex<
 
             // Cleanup on disconnect
             println!("[STILLSOUND] Extension Unlinked: {}", bridge_id);
-            handle_extension_event("disconnect", Some(bridge_id), None, None, &app_clone, &state_clone).await;
-            let remaining_count = state_clone.lock().unwrap().active_bridges.len();
+            handle_extension_event("disconnect", Some(bridge_id.clone()), None, None, &app_clone, &state_clone).await;
+            let remaining_count = {
+                let mut s = state_clone.lock().unwrap();
+                s.bridge_clients.remove(&bridge_id);
+                s.active_bridges.len()
+            };
             let _ = app_clone.emit("bridge_unlinked", remaining_count);
         });
     }
@@ -974,6 +1128,11 @@ pub async fn handle_extension_event<R: Runtime>(
                 "video_playing" => {
                     let is_active = action != SiteAction::Ignore;
                     s.active_bridges.insert(bid, (is_active, action.clone()));
+                    if is_active {
+                        if let Some(ref h) = hostname {
+                            s.active_video_host = Some(h.strip_prefix("www.").unwrap_or(h).to_string());
+                        }
+                    }
                 }
                 "video_paused" => {
                     s.active_bridges.insert(bid, (false, action.clone()));
@@ -987,7 +1146,7 @@ pub async fn handle_extension_event<R: Runtime>(
 
         (
             s.current_device_id.clone(),
-            s.sync_enabled,
+            is_sync_active(&s),
             s.sync_mode.clone(),
             action,
             s.ducking_level,
@@ -1010,6 +1169,9 @@ pub async fn handle_extension_event<R: Runtime>(
     {
         let mut s = state.lock().unwrap();
         s.yt_playing = is_any_video_active;
+        if !is_any_video_active {
+            s.active_video_host = None;
+        }
     }
 
     let _ = app.emit("sync_event", if is_any_video_active { "yt_playing" } else { "yt_paused" });
@@ -1113,10 +1275,11 @@ pub async fn handle_mic_event<R: Runtime>(
     _app: &AppHandle<R>,
     state: &Arc<Mutex<AppState>>
 ) {
-    let (enabled, action, duck_level, device_id, smart_rewind_enabled, smart_rewind_secs, rewind_threshold, yt_playing, was_mic_actioned, manual_override, mic_pause_instant) = {
+    let (enabled, sync_active, action, duck_level, device_id, smart_rewind_enabled, smart_rewind_secs, rewind_threshold, yt_playing, was_mic_actioned, manual_override, mic_pause_instant) = {
         let s = state.lock().unwrap();
         (
             s.mic_aware_enabled,
+            is_sync_active(&s),
             s.mic_action.clone(),
             s.ducking_level,
             s.current_device_id.clone(),
@@ -1163,7 +1326,7 @@ pub async fn handle_mic_event<R: Runtime>(
         return;
     }
 
-    if !enabled || yt_playing { return; }
+    if !enabled || !sync_active || yt_playing { return; }
 
     if media_is_playing(state).await {
         match action {
@@ -1711,10 +1874,13 @@ fn update_settings(
     ducking_level: Option<u32>,
     smart_rewind_enabled: Option<bool>,
     smart_rewind_seconds: Option<u32>,
+    smart_rewind_threshold_secs: Option<u32>,
     mic_aware_enabled: Option<bool>,
     mic_action: Option<String>,
     mini_hud_enabled: Option<bool>,
     album_art_spin: Option<bool>,
+    mini_hud_mode: Option<String>,
+    mini_hud_locked: Option<bool>,
 ) -> Result<(), String> {
     use tauri_plugin_autostart::ManagerExt;
     
@@ -1747,6 +1913,9 @@ fn update_settings(
     if let Some(srs) = smart_rewind_seconds {
         s.smart_rewind_seconds = srs.clamp(1, 30);
     }
+    if let Some(srt) = smart_rewind_threshold_secs {
+        s.smart_rewind_threshold_secs = srt.clamp(5, 300);
+    }
     if let Some(mae) = mic_aware_enabled {
         s.mic_aware_enabled = mae;
     }
@@ -1763,6 +1932,22 @@ fn update_settings(
     if let Some(aas) = album_art_spin {
         s.album_art_spin = aas;
         let _ = app.emit("hud_spin_changed", aas);
+    }
+    if let Some(ref mhm) = mini_hud_mode {
+        s.mini_hud_mode = normalize_hud_mode(mhm);
+    }
+    if let Some(mhl) = mini_hud_locked {
+        s.mini_hud_locked = mhl;
+    }
+    if album_art_spin.is_some() || mini_hud_mode.is_some() || mini_hud_locked.is_some() {
+        let _ = app.emit(
+            "hud_prefs_changed",
+            serde_json::json!({
+                "album_art_spin": s.album_art_spin,
+                "mini_hud_mode": s.mini_hud_mode,
+                "mini_hud_locked": s.mini_hud_locked,
+            }),
+        );
     }
 
     s.save();
@@ -1992,16 +2177,135 @@ fn set_ducking_level(state: tauri::State<'_, StateWrapper>, level: u32) -> Resul
 }
 
 #[tauri::command]
-fn set_site_action(state: tauri::State<'_, StateWrapper>, site: String, action: String) -> Result<(), String> {
+fn set_site_action<R: Runtime>(
+    app: AppHandle<R>,
+    state: tauri::State<'_, StateWrapper>,
+    site: String,
+    action: String,
+) -> Result<(), String> {
+    let clean = site.trim().to_lowercase();
+    let clean = clean.strip_prefix("www.").unwrap_or(&clean).to_string();
+    if clean.is_empty() {
+        return Err("Empty domain".into());
+    }
     let mut s = state.0.lock().unwrap();
-    let act = match action.as_str() {
-        "duck" => SiteAction::Duck,
-        "ignore" => SiteAction::Ignore,
-        _ => SiteAction::Pause,
-    };
-    s.site_actions.insert(site, act);
+    let act = parse_site_action(&action);
+    s.site_actions.insert(clean, act);
     s.save();
     broadcast_site_config(&s.site_actions);
+    let _ = app.emit("site_actions_updated", s.site_actions.clone());
+    Ok(())
+}
+
+#[tauri::command]
+fn remove_site_action<R: Runtime>(
+    app: AppHandle<R>,
+    state: tauri::State<'_, StateWrapper>,
+    site: String,
+) -> Result<(), String> {
+    let clean = site.trim().to_lowercase();
+    let clean = clean.strip_prefix("www.").unwrap_or(&clean).to_string();
+    let mut s = state.0.lock().unwrap();
+    s.site_actions.remove(&clean);
+    s.save();
+    broadcast_site_config(&s.site_actions);
+    let _ = app.emit("site_actions_updated", s.site_actions.clone());
+    Ok(())
+}
+
+#[tauri::command]
+fn apply_site_preset<R: Runtime>(
+    app: AppHandle<R>,
+    state: tauri::State<'_, StateWrapper>,
+    preset: String,
+) -> Result<HashMap<String, SiteAction>, String> {
+    let mut s = state.0.lock().unwrap();
+    if !apply_site_preset_map(&mut s.site_actions, &preset) {
+        return Err(format!("Unknown preset: {}", preset));
+    }
+    s.save();
+    broadcast_site_config(&s.site_actions);
+    let _ = app.emit("site_actions_updated", s.site_actions.clone());
+    Ok(s.site_actions.clone())
+}
+
+async fn apply_snooze_change<R: Runtime>(
+    app: &AppHandle<R>,
+    state: &Arc<Mutex<AppState>>,
+    minutes: Option<u32>,
+    until_restart: bool,
+) {
+    let (should_unduck, should_resume, device_id) = {
+        let mut s = state.lock().unwrap();
+        if until_restart {
+            s.snooze_indefinite = true;
+            s.snooze_until = None;
+        } else if let Some(mins) = minutes.filter(|&m| m > 0) {
+            s.snooze_indefinite = false;
+            s.snooze_until = Some(current_unix_secs() + (mins as u64) * 60);
+        } else {
+            s.snooze_indefinite = false;
+            s.snooze_until = None;
+        }
+        let snoozed = !is_sync_active(&s);
+        (
+            snoozed && s.is_ducked,
+            snoozed && s.app_paused_spotify && !s.manual_pause_detected,
+            s.current_device_id.clone(),
+        )
+    };
+
+    if should_unduck {
+        smooth_unduck_volume(state).await;
+    }
+    if should_resume && media_control(state, true, device_id).await.is_ok() {
+        let mut s = state.lock().unwrap();
+        s.app_paused_spotify = false;
+        s.video_pause_instant = None;
+    }
+    let info = get_current_track_info(state).await;
+    let _ = app.emit("hud_update", info);
+}
+
+#[tauri::command]
+async fn snooze_sync<R: Runtime>(
+    app: AppHandle<R>,
+    state: tauri::State<'_, StateWrapper>,
+    minutes: Option<u32>,
+    until_restart: Option<bool>,
+) -> Result<(), String> {
+    apply_snooze_change(&app, &state.0, minutes, until_restart.unwrap_or(false)).await;
+    Ok(())
+}
+
+#[tauri::command]
+fn set_hud_prefs<R: Runtime>(
+    app: AppHandle<R>,
+    state: tauri::State<'_, StateWrapper>,
+    mode: Option<String>,
+    locked: Option<bool>,
+    spin: Option<bool>,
+) -> Result<(), String> {
+    let mut s = state.0.lock().unwrap();
+    if let Some(m) = mode {
+        s.mini_hud_mode = normalize_hud_mode(&m);
+    }
+    if let Some(l) = locked {
+        s.mini_hud_locked = l;
+    }
+    if let Some(sp) = spin {
+        s.album_art_spin = sp;
+        let _ = app.emit("hud_spin_changed", sp);
+    }
+    s.save();
+    let _ = app.emit(
+        "hud_prefs_changed",
+        serde_json::json!({
+            "album_art_spin": s.album_art_spin,
+            "mini_hud_mode": s.mini_hud_mode,
+            "mini_hud_locked": s.mini_hud_locked,
+        }),
+    );
     Ok(())
 }
 
@@ -2035,6 +2339,39 @@ fn drag_mini_hud(window: tauri::WebviewWindow) -> Result<(), String> {
 #[tauri::command]
 async fn spotify_seek_backward(state: tauri::State<'_, StateWrapper>, seconds: u32) -> Result<(), String> {
     media_seek_backward(&state.0, seconds).await
+}
+
+fn build_badged_tray_icon(base_rgba: &[u8], w: u32, h: u32, dot_rgba: Option<[u8; 4]>) -> Vec<u8> {
+    let mut out = base_rgba.to_vec();
+    let Some([dr, dg, db, da]) = dot_rgba else {
+        return out;
+    };
+    let radius = (w.min(h) / 5).max(3) as i32;
+    let cx = w as i32 - radius - 1;
+    let cy = h as i32 - radius - 1;
+    let r_sq = radius * radius;
+    let border_sq = (radius + 1) * (radius + 1);
+    for y in (cy - radius - 1).max(0)..(cy + radius + 2).min(h as i32) {
+        for x in (cx - radius - 1).max(0)..(cx + radius + 2).min(w as i32) {
+            let d2 = (x - cx) * (x - cx) + (y - cy) * (y - cy);
+            let idx = ((y as u32 * w + x as u32) * 4) as usize;
+            if idx + 3 >= out.len() {
+                continue;
+            }
+            if d2 <= r_sq {
+                out[idx] = dr;
+                out[idx + 1] = dg;
+                out[idx + 2] = db;
+                out[idx + 3] = da;
+            } else if d2 <= border_sq {
+                out[idx] = 18;
+                out[idx + 1] = 18;
+                out[idx + 2] = 20;
+                out[idx + 3] = 240;
+            }
+        }
+    }
+    out
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -2101,13 +2438,37 @@ pub fn run() {
             let play_pause_i = MenuItem::with_id(app, "play_pause", "Play / Pause", true, None::<&str>).unwrap();
             let next_i = MenuItem::with_id(app, "next", "Next Track", true, None::<&str>).unwrap();
             let prev_i = MenuItem::with_id(app, "prev", "Previous Track", true, None::<&str>).unwrap();
+            let snooze_15_i = MenuItem::with_id(app, "snooze_15", "Snooze Sync (15 min)", true, None::<&str>).unwrap();
+            let snooze_60_i = MenuItem::with_id(app, "snooze_60", "Snooze Sync (1 hour)", true, None::<&str>).unwrap();
+            let snooze_restart_i = MenuItem::with_id(app, "snooze_restart", "Snooze Until Restart", true, None::<&str>).unwrap();
+            let snooze_clear_i = MenuItem::with_id(app, "snooze_clear", "Resume Auto Sync", true, None::<&str>).unwrap();
             let show_hud_i = MenuItem::with_id(app, "toggle_hud", "Toggle Mini-HUD", true, None::<&str>).unwrap();
             let show_i = MenuItem::with_id(app, "show", "Show StillSound Studio", true, None::<&str>).unwrap();
             let quit_i = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>).unwrap();
-            let menu = Menu::with_items(app, &[&show_i, &show_hud_i, &play_pause_i, &next_i, &prev_i, &quit_i]).unwrap();
+            let menu = Menu::with_items(
+                app,
+                &[
+                    &show_i,
+                    &show_hud_i,
+                    &play_pause_i,
+                    &next_i,
+                    &prev_i,
+                    &snooze_15_i,
+                    &snooze_60_i,
+                    &snooze_restart_i,
+                    &snooze_clear_i,
+                    &quit_i,
+                ],
+            )
+            .unwrap();
+
+            let base_icon = app.default_window_icon().unwrap().clone();
+            let base_rgba = base_icon.rgba().to_vec();
+            let base_w = base_icon.width();
+            let base_h = base_icon.height();
 
             let tray = TrayIconBuilder::new()
-                .icon(app.default_window_icon().unwrap().clone())
+                .icon(base_icon)
                 .tooltip("StillSound Studio")
                 .menu(&menu)
                 .on_menu_event(|app, event| match event.id.as_ref() {
@@ -2177,6 +2538,19 @@ pub fn run() {
                             let _ = media_skip(&state, false, device_id).await;
                         });
                     }
+                    "snooze_15" | "snooze_60" | "snooze_restart" | "snooze_clear" => {
+                        let id = event.id.as_ref().to_string();
+                        let app_handle = app.clone();
+                        let state = app.state::<StateWrapper>().0.clone();
+                        tauri::async_runtime::spawn(async move {
+                            match id.as_str() {
+                                "snooze_15" => apply_snooze_change(&app_handle, &state, Some(15), false).await,
+                                "snooze_60" => apply_snooze_change(&app_handle, &state, Some(60), false).await,
+                                "snooze_restart" => apply_snooze_change(&app_handle, &state, None, true).await,
+                                _ => apply_snooze_change(&app_handle, &state, Some(0), false).await,
+                            }
+                        });
+                    }
                     _ => {}
                 })
                 .on_tray_icon_event(|tray, event| {
@@ -2199,21 +2573,65 @@ pub fn run() {
             let state_tray = state.clone();
             let app_handle_for_sync = app.handle().clone();
             tauri::async_runtime::spawn(async move {
+                let mut last_badge: Option<&'static str> = None;
                 loop {
                     tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                    {
+                        let mut s = state_tray.lock().unwrap();
+                        if let Some(until) = s.snooze_until {
+                            if current_unix_secs() >= until {
+                                s.snooze_until = None;
+                            }
+                        }
+                    }
                     let info = get_current_track_info(&state_tray).await;
                     let is_playing = info["is_playing"].as_bool().unwrap_or(false);
                     {
                         let mut s = state_tray.lock().unwrap();
                         s.last_music_playing = is_playing;
                     }
+
+                    let sync_eff = info["sync_effective"].as_bool().unwrap_or(true);
+                    let is_ducked = info["is_ducked"].as_bool().unwrap_or(false);
+                    let app_paused = info["app_paused_spotify"].as_bool().unwrap_or(false);
+                    let yt_playing = info["yt_playing"].as_bool().unwrap_or(false);
+                    let mic_active = info["mic_active"].as_bool().unwrap_or(false);
+
+                    let (badge_key, badge_color, state_label): (&'static str, Option<[u8; 4]>, String) = if !sync_eff {
+                        let rem = info["snooze_remaining_secs"].as_u64();
+                        let lbl = match rem {
+                            Some(sec) => format!("Snoozed {}m", (sec / 60).max(1)),
+                            None => "Sync Paused".to_string(),
+                        };
+                        ("snoozed", Some([120, 120, 130, 255]), lbl)
+                    } else if is_ducked {
+                        ("ducked", Some([255, 170, 0, 255]), "Ducked".to_string())
+                    } else if app_paused || yt_playing {
+                        ("paused", Some([255, 76, 0, 255]), "Paused for Video".to_string())
+                    } else if mic_active {
+                        ("mic", Some([47, 204, 107, 255]), "Mic Active".to_string())
+                    } else {
+                        ("idle", None, String::new())
+                    };
+
+                    if last_badge != Some(badge_key) {
+                        last_badge = Some(badge_key);
+                        let rgba = build_badged_tray_icon(&base_rgba, base_w, base_h, badge_color);
+                        let _ = tray_handle.set_icon(Some(tauri::image::Image::new_owned(rgba, base_w, base_h)));
+                    }
+
                     let title = info["track_name"].as_str().unwrap_or("");
                     let artist = info["artist_name"].as_str().unwrap_or("");
-                    if !title.is_empty() {
-                        let _ = tray_handle.set_tooltip(Some(format!("StillSound: {} - {}", title, artist)));
+                    let tip = if !title.is_empty() && !state_label.is_empty() {
+                        format!("StillSound [{}]: {} - {}", state_label, title, artist)
+                    } else if !title.is_empty() {
+                        format!("StillSound: {} - {}", title, artist)
+                    } else if !state_label.is_empty() {
+                        format!("StillSound Studio [{}]", state_label)
                     } else {
-                        let _ = tray_handle.set_tooltip(Some("StillSound Studio"));
-                    }
+                        "StillSound Studio".to_string()
+                    };
+                    let _ = tray_handle.set_tooltip(Some(tip));
                     // Emit HUD updates for the mini_hud overlay window
                     let _ = app_handle_for_sync.emit("hud_update", info);
                 }
@@ -2335,6 +2753,10 @@ pub fn run() {
             save_hud_pos,
             set_ducking_level,
             set_site_action,
+            remove_site_action,
+            apply_site_preset,
+            snooze_sync,
+            set_hud_prefs,
             set_smart_rewind,
             set_mic_aware,
             spotify_seek_backward,
@@ -2425,5 +2847,29 @@ mod tests {
         assert!(!is_allowed_ws_origin("https://evil.example"));
         assert!(!is_allowed_ws_origin("http://127.0.0.1:3000"));
         assert!(!is_allowed_ws_origin(""));
+    }
+
+    #[test]
+    fn snooze_and_preset_helpers_behave_accurately() {
+        let mut s = AppState::default();
+        assert!(is_sync_active(&s));
+
+        s.snooze_until = Some(current_unix_secs() + 300);
+        assert!(!is_sync_active(&s));
+        assert!(snooze_remaining_secs(&s).unwrap_or(0) > 200);
+
+        s.snooze_until = Some(current_unix_secs().saturating_sub(10));
+        assert!(is_sync_active(&s));
+        assert_eq!(snooze_remaining_secs(&s), None);
+
+        s.snooze_indefinite = true;
+        assert!(!is_sync_active(&s));
+
+        assert!(apply_site_preset_map(&mut s.site_actions, "study"));
+        assert_eq!(s.site_actions.get("x.com"), Some(&SiteAction::Pause));
+        assert!(apply_site_preset_map(&mut s.site_actions, "meeting"));
+        assert_eq!(s.site_actions.get("x.com"), Some(&SiteAction::Ignore));
+        assert_eq!(s.site_actions.get("zoom.us"), Some(&SiteAction::Pause));
+        assert!(!apply_site_preset_map(&mut s.site_actions, "invalid"));
     }
 }

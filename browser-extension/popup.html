@@ -430,6 +430,47 @@
       transform: scale(1.03);
     }
 
+    .site-seg {
+      display: inline-flex;
+      background: rgba(0, 0, 0, 0.45);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 7px;
+      padding: 2px;
+      gap: 2px;
+    }
+
+    .site-seg-btn {
+      background: none;
+      border: none;
+      color: rgba(255, 255, 255, 0.55);
+      font-size: 10px;
+      font-weight: 600;
+      padding: 3px 7px;
+      border-radius: 5px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .site-seg-btn:hover {
+      color: #ffffff;
+      background: rgba(255, 255, 255, 0.08);
+    }
+
+    .site-seg-btn.active[data-action="pause"] {
+      background: #ff4c00;
+      color: #ffffff;
+    }
+
+    .site-seg-btn.active[data-action="duck"] {
+      background: #ffaa00;
+      color: #000000;
+    }
+
+    .site-seg-btn.active[data-action="ignore"] {
+      background: rgba(255, 255, 255, 0.18);
+      color: #ffffff;
+    }
+
     /* === SCROLLING TEXT FOR LONG NAMES === */
     .track-name.scrolling,
     .track-artist.scrolling {
@@ -538,7 +579,11 @@
           </svg>
           <span class="status-label" id="current-site-label">Site Action</span>
         </div>
-        <span class="status-pill ok" id="site-action-pill">Pause</span>
+        <div class="site-seg" id="site-seg">
+          <button class="site-seg-btn" data-action="pause" type="button">Pause</button>
+          <button class="site-seg-btn" data-action="duck" type="button">Duck</button>
+          <button class="site-seg-btn" data-action="ignore" type="button">Ignore</button>
+        </div>
       </div>
     </div>
 
