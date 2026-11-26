@@ -253,15 +253,30 @@ function updateDashForMode(mode) {
     }
 }
 
-function setSyncModeAndNavigate(mode) {
-    updateDashForMode(mode);
-    invoke('set_sync_mode', { mode }).catch(console.error);
-    if (mode === 'spotify' && isSpotifyReady) {
-        invoke('get_spotify_volume').then((vol) => {
-            volSlider.value = vol;
-            volNum.textContent = vol + '%';
-            updateSliderFill(volSlider);
-        }).catch(() => {});
+async function setSyncModeAndNavigate(mode) {
+    if (mode === 'spotify' && !isSpotifyReady) {
+        switchTab('setup');
+        return;
+    }
+    try {
+        await invoke('set_sync_mode', { mode });
+        updateDashForMode(mode);
+        if (mode === 'spotify' && isSpotifyReady) {
+            invoke('get_spotify_volume').then((vol) => {
+                volSlider.value = vol;
+                volNum.textContent = vol + '%';
+                updateSliderFill(volSlider);
+            }).catch(() => {});
+        }
+        updateSettingsSummaries();
+    } catch (e) {
+        if (String(e).includes('AUTH_REQUIRED')) {
+            isSpotifyReady = false;
+            updateDashForMode('universal');
+            switchTab('setup');
+        } else {
+            console.error(e);
+        }
     }
 }
 
@@ -661,7 +676,46 @@ async function checkUpdates(manual = false) {
 document.getElementById('check-updates')?.addEventListener('click', () => checkUpdates(true));
 
 // --- Save Settings ---
+function updateSettingsSummaries() {
+    const audioEl = document.getElementById('acc-audio-summary');
+    const hudEl = document.getElementById('acc-hud-summary');
+    const sysEl = document.getElementById('acc-sys-summary');
+
+    if (audioEl) {
+        const duckTxt = `Duck ${duckLevelSlider?.value || 20}%`;
+        const rewTxt = smartRewindToggle?.checked ? `Rewind ${smartRewindSeconds}s` : 'No Rewind';
+        audioEl.textContent = `${duckTxt} · ${rewTxt}`;
+    }
+    if (hudEl) {
+        const onTxt = miniHudToggle?.checked ? 'On' : 'Off';
+        const modeTxt = currentHudMode === 'peek' ? 'Peek' : currentHudMode === 'autohide' ? 'Hide' : 'Pinned';
+        hudEl.textContent = `${onTxt} · ${modeTxt}`;
+    }
+    if (sysEl) {
+        sysEl.textContent = `${currentMode === 'spotify' ? 'Spotify' : 'Universal'} · v${appVersion}`;
+    }
+}
+
+function updateHudModeExplain() {
+    const el = document.getElementById('hud-mode-explain');
+    if (!el) return;
+    if (currentHudMode === 'peek') {
+        el.textContent = 'Peek: hidden while idle; smoothly glides into view for ~2.8s when pausing, ducking, or switching songs.';
+    } else if (currentHudMode === 'autohide') {
+        el.textContent = 'Hide: stays tucked off the top edge until you hover the reveal strip.';
+    } else {
+        el.textContent = 'Pinned: stays visible cleanly on screen and softens gently when idle.';
+    }
+}
+
+document.getElementById('reset-recap-btn')?.addEventListener('click', async () => {
+    await invoke('reset_weekly_recap').catch(console.error);
+    fetchTrackInfo();
+});
+
 async function saveSettings() {
+    updateSettingsSummaries();
+    updateHudModeExplain();
     try {
         await invoke('update_settings', {
             sync: syncToggle.checked,
@@ -880,6 +934,8 @@ window.addEventListener('DOMContentLoaded', async () => {
             el.textContent = (el.textContent.includes('Studio') ? 'StillSound Studio v' : 'v') + version;
         });
 
+        updateSettingsSummaries();
+        updateHudModeExplain();
         showWhatsNewIfNeeded(version);
         checkUpdates(false);
         setInterval(fetchTrackInfo, 1500);
@@ -982,6 +1038,14 @@ async function fetchTrackInfo() {
             setupStepPlayer.classList.toggle('on', hasTrack);
             setupPlayerPill.classList.toggle('on', hasTrack);
             setupPlayerPill.textContent = hasTrack ? (info.device_name || 'detected') : 'standby';
+        }
+
+        if (typeof info.spotify_ready === 'boolean') {
+            isSpotifyReady = info.spotify_ready;
+        }
+        if (typeof info.sync_mode === 'string' && info.sync_mode !== currentMode) {
+            updateDashForMode(info.sync_mode);
+            updateSettingsSummaries();
         }
 
         if (typeof info.active_bridge_count === 'number') {
@@ -1180,6 +1244,8 @@ listen('hud_prefs_changed', (ev) => {
         hudModeSelector.querySelectorAll('.seg-btn').forEach((b) => {
             b.classList.toggle('active', b.dataset.hudMode === currentHudMode);
         });
+        updateSettingsSummaries();
+        updateHudModeExplain();
     }
 });
 

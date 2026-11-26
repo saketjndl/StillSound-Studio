@@ -1326,6 +1326,127 @@ input[type="range"]::-moz-range-thumb {
     background: rgba(255, 76, 0, 0.14);
 }
 
+/* Accordion Settings Cards & Clarity Tokens */
+.acc-card {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 16px;
+    margin-bottom: 10px;
+    overflow: hidden;
+}
+
+.acc-card[open] {
+    border-color: rgba(255, 255, 255, 0.12);
+}
+
+.acc-head {
+    list-style: none;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 12px 14px;
+    cursor: pointer;
+    user-select: none;
+}
+
+.acc-head::-webkit-details-marker {
+    display: none;
+}
+
+.acc-head:hover {
+    background: rgba(255, 255, 255, 0.03);
+}
+
+.acc-title-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.acc-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+}
+
+.acc-sub {
+    font-size: 10.5px;
+    color: var(--faint);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.acc-right {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    flex-shrink: 0;
+}
+
+.acc-pill {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--dim);
+    background: rgba(255, 255, 255, 0.07);
+    padding: 2px 7px;
+    border-radius: 5px;
+}
+
+.acc-chevron {
+    color: var(--faint);
+    transition: transform 0.2s ease;
+}
+
+.acc-card[open] .acc-chevron {
+    transform: rotate(180deg);
+    color: var(--orange);
+}
+
+.acc-body {
+    padding: 4px 14px 14px;
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.sub-row-stack {
+    margin-top: 6px;
+    padding-left: 10px;
+    border-left: 2px solid rgba(255, 170, 0, 0.35);
+}
+
+.sub-label {
+    font-size: 11px;
+    color: var(--dim);
+}
+
+.mode-explain {
+    margin-top: 7px;
+    padding-left: 10px;
+    font-size: 11px;
+    color: var(--dim);
+    line-height: 1.4;
+}
+
+.tiny-reset-btn {
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    color: var(--dim);
+    font-size: 10px;
+    font-weight: 600;
+    padding: 2px 7px;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.tiny-reset-btn:hover {
+    color: var(--text);
+    background: rgba(255, 76, 0, 0.18);
+    border-color: var(--orange);
+}
+
 /* Site row styling */
 .site-item {
     display: flex;

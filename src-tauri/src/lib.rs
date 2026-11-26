@@ -299,6 +299,23 @@ fn apply_site_preset_map(map: &mut HashMap<String, SiteAction>, preset: &str) ->
     }
 }
 
+fn is_focus_video_host(host: Option<&str>) -> bool {
+    const NON_FOCUS_HOSTS: [&str; 12] = [
+        "twitter.com", "x.com", "reddit.com", "instagram.com",
+        "facebook.com", "tiktok.com", "netflix.com", "primevideo.com",
+        "hotstar.com", "disneyplus.com", "jiocinema.com", "twitch.tv",
+    ];
+    let Some(raw) = host else {
+        return true;
+    };
+    let clean = raw.trim().to_lowercase();
+    let clean = clean.strip_prefix("www.").unwrap_or(&clean);
+    if clean.is_empty() {
+        return true;
+    }
+    !NON_FOCUS_HOSTS.iter().any(|d| domain_matches(clean, d))
+}
+
 impl Default for AppState {
     fn default() -> Self {
         Self {
@@ -672,6 +689,7 @@ async fn get_spotify_track_info(state: &Arc<Mutex<AppState>>) -> serde_json::Val
 async fn get_current_track_info(state: &Arc<Mutex<AppState>>) -> serde_json::Value {
     let (
         mode,
+        spotify_ready,
         yt_playing,
         app_paused,
         is_ducked,
@@ -690,6 +708,7 @@ async fn get_current_track_info(state: &Arc<Mutex<AppState>>) -> serde_json::Val
         let s = state.lock().unwrap();
         (
             s.sync_mode.clone(),
+            s.spotify_ready,
             s.yt_playing,
             s.app_paused_spotify,
             s.is_ducked,
@@ -727,6 +746,8 @@ async fn get_current_track_info(state: &Arc<Mutex<AppState>>) -> serde_json::Val
         }
     };
     if let Some(obj) = val.as_object_mut() {
+        obj.insert("sync_mode".to_string(), serde_json::json!(mode));
+        obj.insert("spotify_ready".to_string(), serde_json::Value::Bool(spotify_ready));
         obj.insert("yt_playing".to_string(), serde_json::Value::Bool(yt_playing));
         obj.insert("app_paused_spotify".to_string(), serde_json::Value::Bool(app_paused));
         obj.insert("is_ducked".to_string(), serde_json::Value::Bool(is_ducked));
@@ -1121,7 +1142,9 @@ pub async fn handle_extension_event<R: Runtime>(
             action_override.unwrap_or(SiteAction::Pause)
         };
 
-        println!("[STILLSOUND] Extension Event: '{}' | Host: {:?} | Action: {:?}", event, hostname, action);
+        if event != "disconnect" {
+            println!("[STILLSOUND] Extension Event: '{}' | Host: {:?} | Action: {:?}", event, hostname, action);
+        }
 
         if let Some(bid) = bridge_id {
             match event {
@@ -1629,6 +1652,7 @@ async fn spotify_refresh_token(state: &Arc<Mutex<AppState>>, failed_token: Optio
         if s.auth_failure_count >= 3 && s.sync_mode == SyncMode::Spotify {
             println!("[AUTH] 3 consecutive OAuth refresh failures — circuit breaking to Universal SMTC mode!");
             s.sync_mode = SyncMode::Universal;
+            s.spotify_ready = false;
         }
         s.save();
     } else {
@@ -1637,6 +1661,7 @@ async fn spotify_refresh_token(state: &Arc<Mutex<AppState>>, failed_token: Optio
         if s.auth_failure_count >= 3 && s.sync_mode == SyncMode::Spotify {
             println!("[AUTH] 3 consecutive OAuth refresh failures — circuit breaking to Universal SMTC mode!");
             s.sync_mode = SyncMode::Universal;
+            s.spotify_ready = false;
             s.save();
         }
     }
@@ -2114,6 +2139,9 @@ fn set_sync_mode(state: tauri::State<StateWrapper>, mode: String) -> Result<(), 
         _ => return Err(format!("Unknown sync mode: {}", mode)),
     };
     let mut s = state.0.lock().unwrap();
+    if sync_mode == SyncMode::Spotify && !s.spotify_ready && s.access_token.is_none() {
+        return Err("AUTH_REQUIRED".into());
+    }
     s.sync_mode = sync_mode;
     s.save();
     println!("[STILLSOUND] Sync mode changed to: {}", mode);
@@ -2129,6 +2157,17 @@ fn get_weekly_recap(state: tauri::State<'_, StateWrapper>) -> serde_json::Value 
         "auto_pause_count": s.auto_pause_count,
         "hours_saved": (s.auto_pause_count as f32 * 0.1).round()
     })
+}
+
+#[tauri::command]
+fn reset_weekly_recap(state: tauri::State<'_, StateWrapper>) -> Result<(), String> {
+    let mut s = state.0.lock().unwrap();
+    s.focus_minutes_this_week = 0;
+    s.music_minutes_this_week = 0;
+    s.auto_pause_count = 0;
+    s.recap_week_start = current_unix_secs();
+    s.save();
+    Ok(())
 }
 
 #[tauri::command]
@@ -2651,10 +2690,10 @@ pub fn run() {
                         s.auto_pause_count = 0;
                         s.save();
                     }
-                    if s.yt_playing {
+                    if s.yt_playing && is_sync_active(&s) && is_focus_video_host(s.active_video_host.as_deref()) {
                         s.focus_minutes_this_week += 1;
                         s.save();
-                    } else if s.last_music_playing {
+                    } else if s.last_music_playing && !s.yt_playing {
                         s.music_minutes_this_week += 1;
                         s.save();
                     }
@@ -2749,6 +2788,7 @@ pub fn run() {
             spotify_skip_track,
             set_sync_mode,
             get_weekly_recap,
+            reset_weekly_recap,
             toggle_mini_hud,
             save_hud_pos,
             set_ducking_level,
@@ -2871,5 +2911,15 @@ mod tests {
         assert_eq!(s.site_actions.get("x.com"), Some(&SiteAction::Ignore));
         assert_eq!(s.site_actions.get("zoom.us"), Some(&SiteAction::Pause));
         assert!(!apply_site_preset_map(&mut s.site_actions, "invalid"));
+    }
+
+    #[test]
+    fn focus_host_excludes_entertainment_and_social_sites() {
+        assert!(is_focus_video_host(Some("www.youtube.com")));
+        assert!(is_focus_video_host(Some("udemy.com")));
+        assert!(is_focus_video_host(Some("coursera.org")));
+        assert!(!is_focus_video_host(Some("netflix.com")));
+        assert!(!is_focus_video_host(Some("x.com")));
+        assert!(!is_focus_video_host(Some("www.instagram.com")));
     }
 }
