@@ -27,3 +27,6 @@ dist-ssr
 snapshot_script.py
 PROJECT_SNAPSHOT.md
 AUDIT_AND_ROADMAP.md
+claude-context.zip
+/claude-context
+
