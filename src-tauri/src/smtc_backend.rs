@@ -41,23 +41,40 @@ impl Drop for ComGuard {
     }
 }
 
-#[cfg(target_os = "windows")]
-fn is_browser_id(lower: &str) -> bool {
-    const BROWSERS: &[&str] = &[
+#[cfg(any(target_os = "windows", test))]
+#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+pub(crate) fn is_browser_id(app_id: &str) -> bool {
+    let lower = app_id.trim().to_ascii_lowercase();
+    if lower.is_empty() {
+        return false;
+    }
+    const SUBSTRING_BROWSERS: &[&str] = &[
         "chrome",
         "chromium",
-        "edge",
         "msedge",
         "firefox",
+        "mozilla",
         "opera",
         "brave",
         "vivaldi",
-        "arc",
-        "zen",
         "thorium",
+        "floorp",
+        "librewolf",
+        "waterfox",
+        "yandex",
+        "duckduckgo",
+        "sidekick",
+        "wavebox",
+        "palemoon",
         "stillsound_studio",
     ];
-    BROWSERS.iter().any(|b| lower.contains(b))
+    if SUBSTRING_BROWSERS.iter().any(|b| lower.contains(b)) {
+        return true;
+    }
+    // Token-aware checks to avoid false matches on unrelated words (e.g. "search", "knowledge")
+    lower
+        .split(|c: char| !c.is_ascii_alphanumeric())
+        .any(|tok| matches!(tok, "edge" | "arc" | "zen" | "tor" | "comet"))
 }
 
 #[cfg(target_os = "windows")]
@@ -128,19 +145,25 @@ impl SmtcBackend {
 
         if let Ok(sessions) = manager.GetSessions() {
             if let Ok(size) = sessions.Size() {
-                // 1. Highest Priority: Any non-browser session currently PLAYING audio
+                // 1a. Highest Priority: Primary Music Apps (Spotify, Apple Music, etc.) currently PLAYING
                 for i in 0..size {
                     if let Ok(session) = sessions.GetAt(i) {
                         if let Ok(app_id) = session.SourceAppUserModelId() {
                             let lower = app_id.to_string().to_lowercase();
-                            if !is_browser_id(&lower) {
-                                if let Ok(info) = session.GetPlaybackInfo() {
-                                    if let Ok(status) = info.PlaybackStatus() {
-                                        if status == GlobalSystemMediaTransportControlsSessionPlaybackStatus::Playing {
-                                            return Ok(session);
-                                        }
-                                    }
-                                }
+                            if is_primary_music_id(&lower) && Self::session_is_playing(&session) {
+                                return Ok(session);
+                            }
+                        }
+                    }
+                }
+
+                // 1b. Any other non-browser session currently PLAYING audio
+                for i in 0..size {
+                    if let Ok(session) = sessions.GetAt(i) {
+                        if let Ok(app_id) = session.SourceAppUserModelId() {
+                            let lower = app_id.to_string().to_lowercase();
+                            if !is_browser_id(&lower) && Self::session_is_playing(&session) {
+                                return Ok(session);
                             }
                         }
                     }
@@ -224,9 +247,17 @@ impl SmtcBackend {
             }
         }
 
-        manager
-            .GetCurrentSession()
-            .map_err(|e| format!("No active media session found: {}", e))
+        // Never fall back to browser SMTC sessions (otherwise pausing audio pauses the user's video tab in a loop)
+        if let Ok(current) = manager.GetCurrentSession() {
+            if let Ok(app_id) = current.SourceAppUserModelId() {
+                let lower = app_id.to_string().to_lowercase();
+                if !is_browser_id(&lower) {
+                    return Ok(current);
+                }
+            }
+        }
+
+        Err("No standalone desktop media player session found (ignoring browser tabs)".to_string())
     }
 
     fn session_is_playing(session: &GlobalSystemMediaTransportControlsSession) -> bool {
@@ -239,7 +270,14 @@ impl SmtcBackend {
 
     pub fn pause(&self) -> Result<(), String> {
         let _com = ComGuard::init();
-        let session = self.get_session()?;
+        let session = match self.get_session() {
+            Ok(s) => s,
+            Err(e) => {
+                println!("[SMTC] Pause skipped: {} — open Spotify Desktop (with desktop media overlay enabled) or connect Spotify API for web players.", e);
+                return Err(e);
+            }
+        };
+        let app_id = session.SourceAppUserModelId().map(|s| s.to_string()).unwrap_or_else(|_| "unknown".into());
         let pause_ok = session.TryPauseAsync().and_then(|op| op.get()).unwrap_or(false);
 
         // Give slow/waking desktop players (e.g., Spotify Electron) up to ~320ms to reflect state
@@ -247,7 +285,7 @@ impl SmtcBackend {
         for wait_ms in [120u64, 200u64] {
             std::thread::sleep(std::time::Duration::from_millis(wait_ms));
             if !Self::session_is_playing(&session) {
-                println!("[SMTC] Paused media session");
+                println!("[SMTC] Paused media session ({})", app_id);
                 return Ok(());
             }
         }
@@ -255,19 +293,20 @@ impl SmtcBackend {
         if !pause_ok && Self::session_is_playing(&session) {
             let _ = session.TryTogglePlayPauseAsync().and_then(|op| op.get());
         }
-        println!("[SMTC] Paused media session");
+        println!("[SMTC] Paused media session ({})", app_id);
         Ok(())
     }
 
     pub fn resume(&self) -> Result<(), String> {
         let _com = ComGuard::init();
         let session = self.get_session()?;
+        let app_id = session.SourceAppUserModelId().map(|s| s.to_string()).unwrap_or_else(|_| "unknown".into());
         let play_ok = session.TryPlayAsync().and_then(|op| op.get()).unwrap_or(false);
 
         for wait_ms in [120u64, 200u64] {
             std::thread::sleep(std::time::Duration::from_millis(wait_ms));
             if Self::session_is_playing(&session) {
-                println!("[SMTC] Resumed media session");
+                println!("[SMTC] Resumed media session ({})", app_id);
                 return Ok(());
             }
         }
@@ -275,7 +314,7 @@ impl SmtcBackend {
         if !play_ok && !Self::session_is_playing(&session) {
             let _ = session.TryTogglePlayPauseAsync().and_then(|op| op.get());
         }
-        println!("[SMTC] Resumed media session");
+        println!("[SMTC] Resumed media session ({})", app_id);
         Ok(())
     }
 
@@ -657,5 +696,28 @@ impl SmtcBackend {
     }
     pub fn get_track_info(&self) -> TrackInfo {
         TrackInfo::default()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_browser_id;
+
+    #[test]
+    fn browser_id_filter_blocks_browsers_and_preserves_music_apps() {
+        assert!(is_browser_id("brave.exe"));
+        assert!(is_browser_id("BraveSoftware.Brave-Browser"));
+        assert!(is_browser_id("chrome.exe"));
+        assert!(is_browser_id("firefox.exe"));
+        assert!(is_browser_id("MSEdge.exe"));
+        assert!(is_browser_id("TheBrowserCompany.Arc"));
+        assert!(is_browser_id("zen.exe"));
+        assert!(is_browser_id("stillsound_studio.exe"));
+
+        assert!(!is_browser_id("Spotify.exe"));
+        assert!(!is_browser_id("SpotifyAB.SpotifyMusic_zpdnekdrzrea0!Spotify"));
+        assert!(!is_browser_id("AppleInc.AppleMusicWin_njac!App"));
+        assert!(!is_browser_id("vlc.exe"));
+        assert!(!is_browser_id("MusicSearchApp.exe"));
     }
 }
