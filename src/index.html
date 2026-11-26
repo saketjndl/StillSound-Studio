@@ -85,21 +85,36 @@
                 </div>
 
                 <div class="note">
-                    <strong>Chrome Extension required.</strong><br>
-                    <span class="field-link" id="open-ext-download">Download it from GitHub ↗</span><br>
-                    Then go to <code>chrome://extensions</code> → enable Developer Mode → Load Unpacked → select the
-                    downloaded <code>browser-extension</code> folder.
+                    <strong>Browser Extension required.</strong><br>
+                    <span class="field-link" id="open-ext-download">Download extension / install guide ↗</span><br>
+                    Supports Chrome, Brave, Edge (<code>chrome://extensions</code> → Developer Mode → Load Unpacked) &amp; Firefox (<code>about:debugging</code>).
                 </div>
 
                 <div class="thankyou">
-                    <p>StillSound is free & open source.<br>If it helps your study sessions, consider starring us.</p>
-                    <a href="#" id="star-setup">★ Star on GitHub</a>
+                    <p>StillSound is free &amp; open source.<br>If it helps your study sessions, consider starring us.</p>
+                    <a href="#" id="star-setup">★ Star on GitHub</a> · <a href="#" id="feedback-setup">Report Bug</a>
                 </div>
             </div>
         </main>
 
         <!-- DASHBOARD -->
         <main class="view dash" id="v-dash" style="display:none">
+            <div class="notice-banner" id="whats-new-banner" style="display:none">
+                <div class="notice-body" id="whats-new-link">
+                    <div class="notice-title" id="whats-new-title">Updated to StillSound</div>
+                    <div class="notice-sub">Tap to view changelog &amp; fixes ↗</div>
+                </div>
+                <button class="notice-close" id="whats-new-dismiss" title="Dismiss">&times;</button>
+            </div>
+
+            <div class="notice-banner update" id="dash-update-banner" style="display:none">
+                <div class="notice-body" id="dash-update-link">
+                    <div class="notice-title" id="dash-update-title">Update available</div>
+                    <div class="notice-sub">Tap to download latest release ↗</div>
+                </div>
+                <button class="notice-close" id="dash-update-dismiss" title="Dismiss">&times;</button>
+            </div>
+
             <!-- Dynamic Island Music Section -->
             <div class="music-section" id="music-section">
                 <div class="music-info-row">
@@ -115,7 +130,7 @@
                     </div>
                     <div class="track-info">
                         <div class="track-name" id="track-name">Not Playing</div>
-                        <div class="track-artist" id="track-artist">Open Spotify to see your music</div>
+                        <div class="track-artist" id="track-artist">Open Spotify or your media player</div>
                         <div class="status-row-small">
                             <div class="status-text-small" id="s-sub">Play a video to auto-pause</div>
                         </div>
@@ -194,7 +209,7 @@
                 </div>
                 <div id="ext-help" class="note" style="margin-top: 10px; font-size: 10px;">
                     <span class="field-link" id="open-ext-dash">Download extension from GitHub ↗</span><br>
-                    Load it in Chrome: <code>chrome://extensions</code> → Developer Mode → Load Unpacked
+                    Chrome/Brave/Edge: Developer Mode → Load Unpacked · Firefox: <code>about:debugging</code>
                 </div>
             </div>
 
@@ -208,9 +223,9 @@
 
             <div class="footer">
                 <div class="footer-cta">
-                    built by saketjndl (.sodiumcyanide) · <a href="#" id="star-dash">&#9733; star on github</a>
+                    built by saketjndl (.sodiumcyanide) · <a href="#" id="star-dash">&#9733; star</a> · <a href="#" id="feedback-dash">feedback</a>
                 </div>
-                <div class="footer-ver">v2.5.0</div>
+                <div class="footer-ver">v3.0.0</div>
             </div>
         </main>
 
@@ -379,6 +394,15 @@
                     </div>
                     <button class="btn-flat" id="check-updates"
                         style="width: auto; margin: 0; padding: 6px 12px;">Check</button>
+                </div>
+                <div class="sep" style="margin: 12px 0;"></div>
+                <div class="ctrl-row">
+                    <div class="ctrl-info">
+                        <span class="ctrl-label">Feedback &amp; Bug Report</span>
+                        <span class="ctrl-desc">Opens GitHub Issues with app version &amp; OS info</span>
+                    </div>
+                    <button class="btn-flat" id="open-feedback"
+                        style="width: auto; margin: 0; padding: 6px 12px;">Report ↗</button>
                 </div>
             </div>
 

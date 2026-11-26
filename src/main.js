@@ -54,12 +54,29 @@ let siteActions = {};
 let currentMode = 'universal';
 let isSpotifyReady = false;
 let currentMicAction = 'duck';
+let smartRewindSeconds = 5;
+let activeBridgeCount = 0;
 
 // --- volume & ducking debounce ---
 let volTimer = null;
 let duckTimer = null;
 
 // --- helpers ---
+
+function updateBridgeStatus(count) {
+    activeBridgeCount = Math.max(0, Number(count) || 0);
+    const extHelp = document.getElementById('ext-help');
+
+    if (activeBridgeCount > 0) {
+        pExt.classList.add('on');
+        pExt.textContent = activeBridgeCount > 1 ? `linked (${activeBridgeCount})` : 'linked';
+        if (extHelp) extHelp.style.display = 'none';
+    } else {
+        pExt.classList.remove('on');
+        pExt.textContent = 'unlinked';
+        if (extHelp) extHelp.style.display = 'block';
+    }
+}
 
 function updateDashForMode(mode) {
     currentMode = mode;
@@ -108,10 +125,31 @@ function goDash() {
     updateDashForMode(currentMode);
 }
 
-function openGithub() {
-    invoke('open_url', { url: GITHUB }).catch(() => {
-        window.__TAURI__?.shell?.open(GITHUB);
+function openExternalUrl(url) {
+    invoke('open_url', { url }).catch(() => {
+        window.__TAURI__?.shell?.open(url);
     });
+}
+
+function openGithub() {
+    openExternalUrl(GITHUB);
+}
+
+function openFeedback() {
+    const ua = navigator.userAgent || '';
+    const osName = ua.includes('Mac') ? 'macOS' : ua.includes('Linux') ? 'Linux' : 'Windows';
+    const body = [
+        '### Environment',
+        `- App Version: v${appVersion}`,
+        `- OS: ${osName}`,
+        `- Sync Mode: ${currentMode}`,
+        `- Browser Extensions Linked: ${activeBridgeCount}`,
+        '',
+        '### Feedback / Bug Description',
+        'Describe what happened or what you would like improved:'
+    ].join('\n');
+    const url = `${GITHUB}/issues/new?title=${encodeURIComponent(`[v${appVersion}] `)}&body=${encodeURIComponent(body)}`;
+    openExternalUrl(url);
 }
 
 // --- window controls (Tauri Window API + IPC fallback) ---
@@ -205,17 +243,22 @@ document.getElementById('star-dash').addEventListener('click', (e) => {
     e.preventDefault();
     openGithub();
 });
+document.getElementById('feedback-setup')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    openFeedback();
+});
+document.getElementById('feedback-dash')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    openFeedback();
+});
+document.getElementById('open-feedback')?.addEventListener('click', openFeedback);
 
 // --- extension download link ---
 document.getElementById('open-ext-download').addEventListener('click', () => {
-    invoke('open_url', { url: GITHUB }).catch(() => {
-        window.__TAURI__?.shell?.open(GITHUB);
-    });
+    openExternalUrl(`${GITHUB}/releases`);
 });
 document.getElementById('open-ext-dash').addEventListener('click', () => {
-    invoke('open_url', { url: GITHUB }).catch(() => {
-        window.__TAURI__?.shell?.open(GITHUB);
-    });
+    openExternalUrl(`${GITHUB}/releases`);
 });
 
 // --- advanced setup toggle ---
@@ -345,11 +388,102 @@ miniHudToggle.addEventListener('change', (e) => {
 smartRewindToggle.addEventListener('change', saveSettings);
 
 let appVersion = '3.0.0';
+let latestUpdateUrl = '';
 
-// --- update check ---
+function isNewerVersion(latest, current) {
+    const a = String(latest || '').replace(/^v/i, '').split('.').map(n => parseInt(n, 10) || 0);
+    const b = String(current || '').replace(/^v/i, '').split('.').map(n => parseInt(n, 10) || 0);
+    const len = Math.max(a.length, b.length, 3);
+    for (let i = 0; i < len; i++) {
+        const av = a[i] || 0;
+        const bv = b[i] || 0;
+        if (av > bv) return true;
+        if (av < bv) return false;
+    }
+    return false;
+}
+
+function pickPlatformAsset(assets = [], fallbackUrl = GITHUB) {
+    const ua = navigator.userAgent || '';
+    let match = null;
+    if (ua.includes('Mac')) {
+        match = assets.find(a => a.name.endsWith('.dmg'));
+    } else if (ua.includes('Linux')) {
+        match = assets.find(a => a.name.endsWith('.AppImage')) || assets.find(a => a.name.endsWith('.deb'));
+    } else {
+        match = assets.find(a => a.name.endsWith('.exe')) || assets.find(a => a.name.endsWith('.msi'));
+    }
+    return match ? match.browser_download_url : fallbackUrl;
+}
+
+function showUpdateNotice(latestVersion, downloadUrl) {
+    const statusText = document.getElementById('update-status');
+    const dashBanner = document.getElementById('dash-update-banner');
+    const dashTitle = document.getElementById('dash-update-title');
+    if (statusText) {
+        statusText.innerHTML = `Update available: <strong>v${latestVersion}</strong>`;
+        statusText.style.color = 'var(--orange)';
+    }
+    latestUpdateUrl = downloadUrl || `${GITHUB}/releases/latest`;
+    if (dashBanner && dashTitle && localStorage.getItem('stillsound_dismissed_update') !== latestVersion) {
+        dashTitle.textContent = `StillSound v${latestVersion} is available`;
+        dashBanner.style.display = 'flex';
+    }
+}
+
+document.getElementById('dash-update-link')?.addEventListener('click', () => {
+    if (latestUpdateUrl) openExternalUrl(latestUpdateUrl);
+});
+document.getElementById('dash-update-dismiss')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const dashBanner = document.getElementById('dash-update-banner');
+    if (dashBanner) dashBanner.style.display = 'none';
+    const match = (document.getElementById('dash-update-title')?.textContent || '').match(/v(\d+\.\d+\.\d+)/);
+    if (match) localStorage.setItem('stillsound_dismissed_update', match[1]);
+});
+
+function showWhatsNewIfNeeded(version) {
+    const seen = localStorage.getItem('stillsound_seen_version');
+    const banner = document.getElementById('whats-new-banner');
+    const titleEl = document.getElementById('whats-new-title');
+    if (!banner || !titleEl) return;
+    if (seen && seen !== version) {
+        titleEl.textContent = `Updated to StillSound v${version}`;
+        banner.style.display = 'flex';
+    } else if (!seen) {
+        localStorage.setItem('stillsound_seen_version', version);
+    }
+}
+
+document.getElementById('whats-new-link')?.addEventListener('click', () => {
+    localStorage.setItem('stillsound_seen_version', appVersion);
+    const banner = document.getElementById('whats-new-banner');
+    if (banner) banner.style.display = 'none';
+    openExternalUrl(`${GITHUB}/releases/tag/v${appVersion}`);
+});
+document.getElementById('whats-new-dismiss')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    localStorage.setItem('stillsound_seen_version', appVersion);
+    const banner = document.getElementById('whats-new-banner');
+    if (banner) banner.style.display = 'none';
+});
+
+// --- update check (throttled every 12h unless manual) ---
 async function checkUpdates(manual = false) {
     const statusText = document.getElementById('update-status');
     const checkBtn = document.getElementById('check-updates');
+
+    if (!manual) {
+        try {
+            const cached = JSON.parse(localStorage.getItem('stillsound_update_cache') || 'null');
+            if (cached && (Date.now() - cached.checkedAt) < 12 * 60 * 60 * 1000) {
+                if (isNewerVersion(cached.version, appVersion)) {
+                    showUpdateNotice(cached.version, cached.url);
+                }
+                return;
+            }
+        } catch (e) {}
+    }
 
     if (manual) {
         checkBtn.textContent = 'Checking...';
@@ -360,16 +494,21 @@ async function checkUpdates(manual = false) {
         const res = await fetch('https://api.github.com/repos/saketjndl/StillSound-Studio/releases/latest');
         if (!res.ok) throw new Error('API down');
         const data = await res.json();
-        const latestVersion = data.tag_name.replace('v', '');
+        const latestVersion = (data.tag_name || '').replace(/^v/i, '');
+        const assetUrl = pickPlatformAsset(data.assets || [], data.html_url);
 
-        if (latestVersion !== appVersion) {
-            statusText.innerHTML = `Update available: <strong>v${latestVersion}</strong>`;
-            statusText.style.color = 'var(--orange)';
-            
-            if (manual) {
-                const installer = data.assets.find(a => a.name.endsWith('.exe'));
-                const url = installer ? installer.browser_download_url : data.html_url;
-                invoke('open_url', { url });
+        try {
+            localStorage.setItem('stillsound_update_cache', JSON.stringify({
+                version: latestVersion,
+                url: assetUrl,
+                checkedAt: Date.now()
+            }));
+        } catch (e) {}
+
+        if (isNewerVersion(latestVersion, appVersion)) {
+            showUpdateNotice(latestVersion, assetUrl);
+            if (manual && assetUrl) {
+                openExternalUrl(assetUrl);
             }
         } else {
             statusText.textContent = 'You are on the latest version';
@@ -411,7 +550,7 @@ async function saveSettings() {
             siteActions: siteActions,
             duckingLevel: parseInt(duckLevelSlider.value) || 20,
             smartRewindEnabled: smartRewindToggle.checked,
-            smartRewindSeconds: 5,
+            smartRewindSeconds: smartRewindSeconds,
             micAwareEnabled: micAwareToggle.checked,
             micAction: currentMicAction,
             miniHudEnabled: miniHudToggle.checked
@@ -506,6 +645,9 @@ window.addEventListener('DOMContentLoaded', async () => {
             duckLevelNum.textContent = s.ducking_level + '%';
         }
         smartRewindToggle.checked = s.smart_rewind_enabled !== false;
+        if (s.smart_rewind_seconds != null) {
+            smartRewindSeconds = s.smart_rewind_seconds;
+        }
         micAwareToggle.checked = s.mic_aware_enabled !== false;
         if (micActionRow) {
             micActionRow.style.display = micAwareToggle.checked ? 'flex' : 'none';
@@ -524,12 +666,7 @@ window.addEventListener('DOMContentLoaded', async () => {
 
         renderSiteMatrix();
 
-        if (s.active_bridges && Object.keys(s.active_bridges).length > 0) {
-            pExt.classList.add('on');
-            pExt.textContent = 'linked';
-            const extHelp = document.getElementById('ext-help');
-            if (extHelp) extHelp.style.display = 'none';
-        }
+        updateBridgeStatus(s.active_bridges ? Object.keys(s.active_bridges).length : 0);
 
         if (s.spotify_ready) isSpotifyReady = true;
         currentMode = s.sync_mode || 'universal';
@@ -547,6 +684,7 @@ window.addEventListener('DOMContentLoaded', async () => {
             el.textContent = (el.textContent.includes('Studio') ? 'StillSound Studio v' : 'v') + version;
         });
 
+        showWhatsNewIfNeeded(version);
         checkUpdates(false);
         
         setInterval(fetchTrackInfo, 1500);
@@ -585,10 +723,22 @@ async function fetchTrackInfo() {
         }
         
         if (!info.track_name) {
+            currentTrackName = '';
             trackName.textContent = 'Not Playing';
-            trackArtist.textContent = 'Open Spotify to see your music';
+            trackArtist.textContent = currentMode === 'universal'
+                ? 'Open Spotify or your media player'
+                : 'Open Spotify to see your music';
             albumArt.classList.remove('loaded');
-            ambientBg.src = "";
+            albumArt.removeAttribute('src');
+            ambientBg.removeAttribute('src');
+        }
+
+        if (typeof info.active_bridge_count === 'number' && info.active_bridge_count !== activeBridgeCount) {
+            updateBridgeStatus(info.active_bridge_count);
+        }
+
+        if (!info.yt_playing && !info.app_paused_spotify && lastVideoState === 'playing') {
+            lastVideoState = 'idle';
         }
         
         // Dynamic status row with Ducking & Mic awareness
@@ -722,16 +872,14 @@ listen('auth_success', () => {
     tryRefresh(3);
 });
 
-listen('bridge_linked', () => {
-    pExt.classList.add('on');
-    pExt.textContent = 'linked';
-    const extHelp = document.getElementById('ext-help');
-    if (extHelp) extHelp.style.display = 'none';
+listen('bridge_linked', (ev) => {
+    const count = typeof ev.payload === 'number' ? ev.payload : Math.max(1, activeBridgeCount + 1);
+    updateBridgeStatus(count);
 });
 
-listen('bridge_unlinked', () => {
-    pExt.classList.remove('on');
-    pExt.textContent = 'unlinked';
+listen('bridge_unlinked', (ev) => {
+    const count = typeof ev.payload === 'number' ? ev.payload : 0;
+    updateBridgeStatus(count);
 });
 
 listen('sync_event', (ev) => {

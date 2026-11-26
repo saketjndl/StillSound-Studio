@@ -6,10 +6,13 @@ const SOCIAL_DOMAINS = ['twitter.com', 'x.com', 'reddit.com', 'instagram.com', '
 const SESSION_KEY = 'stillsound_session_v1';
 
 let portIndex = 0;
+let portSweepCount = 0;
 let socket = null;
 let reconnectTimer = null;
 let reconnectInterval = 3000;
 let isConnected = false;
+let connectAttemptAt = 0;
+let pendingSyncOnOpen = false;
 
 // Aggregation state: "tabId:frameId" -> { tabId, frameId, isPlaying, hostname, action }
 const tabStates = new Map();
@@ -190,6 +193,7 @@ function connect() {
         return;
     }
 
+    connectAttemptAt = Date.now();
     const currentUrl = `ws://127.0.0.1:${PORTS[portIndex]}`;
 
     try {
@@ -207,22 +211,32 @@ function connect() {
         console.log('[StillSound] WebSocket connected successfully on port', PORTS[portIndex]);
         isConnected = true;
         updateBadge(true);
+        portSweepCount = 0;
         reconnectInterval = 3000;
 
         await sessionReady;
         await pruneStaleTabs();
 
-        // Clear pre-reconnect active states so stale tabs cannot replay ghost video_playing on wake;
-        // live tabs will re-report via sync_playback_state below.
+        // Absorb pre-sleep tabs while keeping live events sent during this wake/connect window.
+        const wakeCutoff = connectAttemptAt - 2000;
+        let hasFreshPlaying = false;
         if (debounceTimer) {
             clearTimeout(debounceTimer);
             debounceTimer = null;
         }
         for (const entry of tabStates.values()) {
-            entry.isPlaying = false;
+            if (!entry.updatedAt || entry.updatedAt < wakeCutoff) {
+                entry.isPlaying = false;
+            } else if (entry.isPlaying && entry.action !== 'ignore') {
+                hasFreshPlaying = true;
+            }
         }
-        aggregateState = 'idle';
+        if (!hasFreshPlaying) {
+            aggregateState = 'idle';
+        }
         persistSessionState();
+
+        sendToApp({ type: 'hello', client: isFirefox ? 'Firefox' : 'Chromium' });
 
         // Request live status verification from any open matching tabs after reconnect/wake
         const matches = api.runtime.getManifest().content_scripts?.[0]?.matches || [];
@@ -233,6 +247,11 @@ function connect() {
                     sendTabMessage(tab.id, { type: 'sync_playback_state' });
                 }
             }
+        }
+
+        if (hasFreshPlaying || pendingSyncOnOpen) {
+            pendingSyncOnOpen = false;
+            updateAggregateState(true);
         }
     };
 
@@ -285,14 +304,29 @@ function connect() {
     };
 }
 
+function ensureConnected() {
+    if (!socket || socket.readyState === WebSocket.CLOSED) {
+        connect();
+    }
+}
+
 function rotatePortAndRetry() {
     clearReconnectTimer();
     portIndex = (portIndex + 1) % PORTS.length;
+    portSweepCount += 1;
+
+    // Probe all fallback ports quickly on the first sweep, then back off cleanly.
+    let delay = 350;
+    if (portSweepCount >= PORTS.length) {
+        portSweepCount = 0;
+        delay = reconnectInterval;
+        if (reconnectInterval < 10000) reconnectInterval += 1500;
+    }
+
     reconnectTimer = setTimeout(() => {
         reconnectTimer = null;
         connect();
-    }, reconnectInterval);
-    if (reconnectInterval < 10000) reconnectInterval += 1500;
+    }, delay);
 }
 
 function sendActivePlaybackState() {
@@ -343,17 +377,39 @@ function updateAggregateState(forceSync = false) {
 
 function sendToApp(payload) {
     if (socket && socket.readyState === WebSocket.OPEN) {
-        socket.send(JSON.stringify(payload));
+        try {
+            socket.send(JSON.stringify(payload));
+            return true;
+        } catch (e) {}
     }
+    pendingSyncOnOpen = true;
+    ensureConnected();
+    return false;
 }
 
-// Keep service worker alive & ensure connection recovers after sleep
-api.alarms.create('keepalive', { periodInMinutes: 1.0 });
+// Keep service worker / Firefox event page alive & reconnect promptly on browser focus
+try {
+    api.alarms.create('keepalive', { periodInMinutes: 0.5 });
+} catch (e) {
+    api.alarms.create('keepalive', { periodInMinutes: 1.0 });
+}
 api.alarms.onAlarm.addListener((alarm) => {
     if (alarm.name === 'keepalive') {
         if (!socket || socket.readyState !== WebSocket.OPEN) {
-            connect();
+            ensureConnected();
+        } else {
+            sendToApp({ type: 'ping' });
         }
+    }
+});
+
+api.tabs?.onActivated?.addListener(() => {
+    ensureConnected();
+});
+
+api.windows?.onFocusChanged?.addListener((windowId) => {
+    if (windowId !== api.windows?.WINDOW_ID_NONE) {
+        ensureConnected();
     }
 });
 
@@ -422,12 +478,12 @@ api.runtime.onMessage.addListener((message, sender, sendResponse) => {
         }
 
         if (message.type === 'video_playing') {
-            tabStates.set(key, { tabId, frameId, isPlaying: true, hostname, action });
+            tabStates.set(key, { tabId, frameId, isPlaying: true, hostname, action, updatedAt: Date.now() });
             persistSessionState();
             updateAggregateState();
         } else if (message.type === 'video_paused') {
             if (tabStates.has(key)) {
-                tabStates.set(key, { tabId, frameId, isPlaying: false, hostname, action });
+                tabStates.set(key, { tabId, frameId, isPlaying: false, hostname, action, updatedAt: Date.now() });
                 persistSessionState();
                 updateAggregateState();
             }

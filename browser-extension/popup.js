@@ -19,6 +19,8 @@ const iconPause = document.getElementById('icon-pause');
 const btnNext = document.getElementById('btn-next');
 const onboardingBanner = document.getElementById('onboarding-banner');
 const controls = document.getElementById('controls');
+const permBanner = document.getElementById('perm-banner');
+const btnGrantPerms = document.getElementById('btn-grant-perms');
 
 let lastTrackName = '';
 let isSpotifyPlaying = false;
@@ -269,6 +271,7 @@ function updateUI(res) {
             }
             lastTrackName = s.track_name;
         } else {
+            lastTrackName = '';
             trackName.textContent = 'No Active Music Session';
             trackArtist.textContent = 'Play music on Spotify, Apple Music, or VLC';
             albumArt.classList.remove('loaded');
@@ -283,6 +286,42 @@ function updateUI(res) {
     }
 }
 
+async function checkHostPermissions() {
+    if (!permBanner || !api.permissions?.contains) return;
+    try {
+        const hasPerms = await api.permissions.contains({
+            origins: ['*://*.youtube.com/*', '*://127.0.0.1/*']
+        });
+        permBanner.style.display = hasPerms ? 'none' : 'flex';
+    } catch (e) {}
+}
+
+if (btnGrantPerms) {
+    btnGrantPerms.addEventListener('click', async () => {
+        if (!api.permissions?.request) return;
+        try {
+            const manifest = api.runtime.getManifest();
+            const origins = manifest.host_permissions || [];
+            const granted = await api.permissions.request({ origins });
+            if (granted) {
+                permBanner.style.display = 'none';
+                const matches = manifest.content_scripts?.[0]?.matches || [];
+                if (matches.length > 0 && api.tabs?.query && api.scripting?.executeScript) {
+                    const tabs = await api.tabs.query({ url: matches });
+                    for (const tab of tabs) {
+                        if (tab.id != null && !tab.discarded) {
+                            api.scripting.executeScript({
+                                target: { tabId: tab.id, allFrames: true },
+                                files: ['content.js']
+                            }).catch(() => {});
+                        }
+                    }
+                }
+            }
+        } catch (e) {}
+    });
+}
+
 function getStatus() {
     pollCount += 1;
     if (pollCount % 2 === 1) {
@@ -291,5 +330,6 @@ function getStatus() {
     sendRuntimeMessage({ type: 'get_status' }, updateUI);
 }
 
+checkHostPermissions();
 getStatus();
 setInterval(getStatus, 1000);

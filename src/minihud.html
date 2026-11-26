@@ -593,16 +593,18 @@
                 }
                 trackSubText.textContent = sub || 'Playing';
 
-                if (data.album_art && artImg.src !== data.album_art) {
+                if (data.album_art && artImg.getAttribute('src') !== data.album_art) {
                     artImg.src = data.album_art;
                     artImg.onload = () => artImg.classList.add('loaded');
                 } else if (!data.album_art) {
                     artImg.classList.remove('loaded');
+                    artImg.removeAttribute('src');
                 }
             } else {
                 trackTitle.textContent = 'No Media Active';
                 trackSubText.textContent = 'Play music on Spotify or PC';
                 artImg.classList.remove('loaded');
+                artImg.removeAttribute('src');
             }
 
             setPlayState(!!data.is_playing);
@@ -610,6 +612,7 @@
             // Capsule status & styling
             capsule.classList.remove('ducked', 'paused');
             statusBadge.className = 'status-badge';
+            statusBadge.textContent = '';
 
             if (data.is_ducked) {
                 capsule.classList.add('ducked');

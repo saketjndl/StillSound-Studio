@@ -4,6 +4,7 @@
 use crate::media_backend::TrackInfo;
 
 #[cfg(any(target_os = "macos", test))]
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 fn build_seek_backward_script(seconds: u32) -> String {
     format!(
         concat!(
@@ -32,6 +33,7 @@ fn build_seek_backward_script(seconds: u32) -> String {
 }
 
 #[cfg(any(target_os = "macos", test))]
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 fn parse_macos_track_output(output: &str) -> TrackInfo {
     let parts: Vec<&str> = output.split("|||").collect();
     if parts.len() < 6 {

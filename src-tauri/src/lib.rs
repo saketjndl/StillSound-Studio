@@ -571,9 +571,17 @@ async fn get_spotify_track_info(state: &Arc<Mutex<AppState>>) -> serde_json::Val
 
 /// Mode-aware track info: returns Spotify or SMTC data depending on sync_mode
 async fn get_current_track_info(state: &Arc<Mutex<AppState>>) -> serde_json::Value {
-    let (mode, yt_playing, app_paused, is_ducked, mic_active, duck_level) = {
+    let (mode, yt_playing, app_paused, is_ducked, mic_active, duck_level, bridge_count) = {
         let s = state.lock().unwrap();
-        (s.sync_mode.clone(), s.yt_playing, s.app_paused_spotify, s.is_ducked, s.mic_active, s.ducking_level)
+        (
+            s.sync_mode.clone(),
+            s.yt_playing,
+            s.app_paused_spotify,
+            s.is_ducked,
+            s.mic_active,
+            s.ducking_level,
+            s.active_bridges.len(),
+        )
     };
     let mut val = match mode {
         SyncMode::Universal => {
@@ -601,6 +609,7 @@ async fn get_current_track_info(state: &Arc<Mutex<AppState>>) -> serde_json::Val
         obj.insert("is_ducked".to_string(), serde_json::Value::Bool(is_ducked));
         obj.insert("mic_active".to_string(), serde_json::Value::Bool(mic_active));
         obj.insert("ducking_level".to_string(), serde_json::Value::Number(duck_level.into()));
+        obj.insert("active_bridge_count".to_string(), serde_json::Value::Number(bridge_count.into()));
     }
     val
 }
@@ -735,14 +744,19 @@ async fn start_extension_bridge<R: Runtime>(app: AppHandle<R>, state: Arc<Mutex<
             };
 
             println!("[STILLSOUND] Extension Linked: {}", bridge_id);
-            {
+            let linked_count = {
                 let mut s = state_clone.lock().unwrap();
                 s.active_bridges.insert(bridge_id.clone(), (false, SiteAction::Pause));
-            }
-            let _ = app_clone.emit("bridge_linked", ());
+                s.active_bridges.len()
+            };
+            let _ = app_clone.emit("bridge_linked", linked_count);
 
             let (mut write, mut read) = ws_stream.split();
             let mut config_rx = config_broadcaster().subscribe();
+            let mut ping_interval = tokio::time::interval(std::time::Duration::from_secs(20));
+            ping_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+            ping_interval.tick().await;
+            let mut last_activity = Instant::now();
 
             // Send initial media state on connect (mode-aware)
             let info = get_current_track_info(&state_clone).await;
@@ -763,6 +777,16 @@ async fn start_extension_bridge<R: Runtime>(app: AppHandle<R>, state: Arc<Mutex<
             loop {
                 tokio::select! {
                     biased;
+                    _ = ping_interval.tick() => {
+                        // Evict half-open sockets (e.g. crashed/suspended browser workers)
+                        if last_activity.elapsed() > std::time::Duration::from_secs(60) {
+                            println!("[STILLSOUND] Extension heartbeat timeout for {}", bridge_id);
+                            break;
+                        }
+                        if write.send(tokio_tungstenite::tungstenite::Message::Ping(Vec::new())).await.is_err() {
+                            break;
+                        }
+                    }
                     config_update = config_rx.recv() => {
                         match config_update {
                             Ok(json) => {
@@ -783,10 +807,15 @@ async fn start_extension_bridge<R: Runtime>(app: AppHandle<R>, state: Arc<Mutex<
                     ws_next = read.next() => {
                         let Some(msg_res) = ws_next else { break; };
                         let Ok(msg) = msg_res else { break; };
+                        last_activity = Instant::now();
                         if msg.is_close() {
                             break;
                         }
-                        if !msg.is_text() {
+                        if msg.is_ping() {
+                            let _ = write.send(tokio_tungstenite::tungstenite::Message::Pong(msg.into_data())).await;
+                            continue;
+                        }
+                        if msg.is_pong() || !msg.is_text() {
                             continue;
                         }
                         let Ok(text) = msg.to_text() else { continue; };
@@ -794,6 +823,13 @@ async fn start_extension_bridge<R: Runtime>(app: AppHandle<R>, state: Arc<Mutex<
 
                         if let Some(event_type) = event["type"].as_str() {
                             match event_type {
+                                "ping" => {
+                                    let _ = write.send(tokio_tungstenite::tungstenite::Message::Text(r#"{"type":"pong"}"#.to_string())).await;
+                                }
+                                "hello" => {
+                                    let client = event["client"].as_str().unwrap_or("unknown");
+                                    println!("[STILLSOUND] Extension identified as {} ({})", client, bridge_id);
+                                }
                                 "get_spotify_info" => {
                                     let info = get_current_track_info(&state_clone).await;
                                     if let Ok(json) = serde_json::to_string(&info) {
@@ -900,7 +936,8 @@ async fn start_extension_bridge<R: Runtime>(app: AppHandle<R>, state: Arc<Mutex<
             // Cleanup on disconnect
             println!("[STILLSOUND] Extension Unlinked: {}", bridge_id);
             handle_extension_event("disconnect", Some(bridge_id), None, None, &app_clone, &state_clone).await;
-            let _ = app_clone.emit("bridge_unlinked", ());
+            let remaining_count = state_clone.lock().unwrap().active_bridges.len();
+            let _ = app_clone.emit("bridge_unlinked", remaining_count);
         });
     }
 }

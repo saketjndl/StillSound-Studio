@@ -966,6 +966,59 @@ input[type="range"]::-moz-range-thumb {
     font-weight: 600;
 }
 
+/* Update & What's New notice banners */
+.notice-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 9px 12px;
+    border-radius: 10px;
+    background: rgba(47, 204, 107, 0.1);
+    border: 1px solid rgba(47, 204, 107, 0.3);
+}
+
+.notice-banner.update {
+    background: rgba(255, 76, 0, 0.12);
+    border-color: rgba(255, 76, 0, 0.35);
+}
+
+.notice-body {
+    flex: 1;
+    min-width: 0;
+    cursor: pointer;
+}
+
+.notice-title {
+    font-size: 11.5px;
+    font-weight: 600;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.notice-sub {
+    font-size: 10px;
+    color: var(--dim);
+}
+
+.notice-close {
+    background: none;
+    border: none;
+    color: var(--dim);
+    font-size: 15px;
+    line-height: 1;
+    cursor: pointer;
+    padding: 2px 4px;
+    border-radius: 4px;
+}
+
+.notice-close:hover {
+    color: var(--text);
+    background: rgba(255, 255, 255, 0.08);
+}
+
 /* Site row styling */
 .site-item {
     display: flex;

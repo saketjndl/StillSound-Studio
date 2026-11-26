@@ -4,6 +4,7 @@
 use crate::media_backend::TrackInfo;
 
 #[cfg(any(target_os = "linux", test))]
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 pub(crate) fn is_browser_identity(identity: &str, bus_name: &str) -> bool {
     let id = identity.to_ascii_lowercase();
     let bus = bus_name.to_ascii_lowercase();
