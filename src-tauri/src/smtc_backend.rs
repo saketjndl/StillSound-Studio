@@ -71,6 +71,10 @@ pub(crate) fn is_browser_id(app_id: &str) -> bool {
     if SUBSTRING_BROWSERS.iter().any(|b| lower.contains(b)) {
         return true;
     }
+    // Mozilla Firefox / Gecko Windows installs use 16-char uppercase hex AppUserModelID hashes (e.g. 308046B0AF4A39CB)
+    if lower.len() == 16 && lower.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return true;
+    }
     // Token-aware checks to avoid false matches on unrelated words (e.g. "search", "knowledge")
     lower
         .split(|c: char| !c.is_ascii_alphanumeric())
@@ -157,19 +161,19 @@ impl SmtcBackend {
                     }
                 }
 
-                // 1b. Any other non-browser session currently PLAYING audio
+                // 1b. General Media Players (VLC, mpv, MPC, etc.) currently PLAYING
                 for i in 0..size {
                     if let Ok(session) = sessions.GetAt(i) {
                         if let Ok(app_id) = session.SourceAppUserModelId() {
                             let lower = app_id.to_string().to_lowercase();
-                            if !is_browser_id(&lower) && Self::session_is_playing(&session) {
+                            if is_general_media_id(&lower) && Self::session_is_playing(&session) {
                                 return Ok(session);
                             }
                         }
                     }
                 }
 
-                // 2a. Primary Music Apps with a loaded track title
+                // 2a. Primary Music Apps with a loaded track title (even if paused, stay bound to Spotify rather than hijacking unknown sessions)
                 for i in 0..size {
                     if let Ok(session) = sessions.GetAt(i) {
                         if let Ok(app_id) = session.SourceAppUserModelId() {
@@ -233,7 +237,19 @@ impl SmtcBackend {
                     }
                 }
 
-                // 4. Anything NOT a web browser
+                // 4a. Any other non-browser session currently PLAYING audio
+                for i in 0..size {
+                    if let Ok(session) = sessions.GetAt(i) {
+                        if let Ok(app_id) = session.SourceAppUserModelId() {
+                            let lower = app_id.to_string().to_lowercase();
+                            if !is_browser_id(&lower) && Self::session_is_playing(&session) {
+                                return Ok(session);
+                            }
+                        }
+                    }
+                }
+
+                // 4b. Anything NOT a web browser
                 for i in 0..size {
                     if let Ok(session) = sessions.GetAt(i) {
                         if let Ok(app_id) = session.SourceAppUserModelId() {
@@ -709,6 +725,8 @@ mod tests {
         assert!(is_browser_id("BraveSoftware.Brave-Browser"));
         assert!(is_browser_id("chrome.exe"));
         assert!(is_browser_id("firefox.exe"));
+        assert!(is_browser_id("308046B0AF4A39CB"));
+        assert!(is_browser_id("E7CF176E110C211B"));
         assert!(is_browser_id("MSEdge.exe"));
         assert!(is_browser_id("TheBrowserCompany.Arc"));
         assert!(is_browser_id("zen.exe"));

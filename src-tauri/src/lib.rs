@@ -1326,23 +1326,26 @@ pub async fn handle_extension_event<R: Runtime>(
     }
 
     if any_pause_playing {
-        // High priority: Full pause
-        let is_playing = media_is_playing(state).await;
-        if is_playing {
-            smooth_unduck_volume(state).await;
-            if media_control(state, false, device_id).await.is_ok() {
+        // High priority: Full pause (skip if StillSound already paused media for another active video)
+        let already_paused = { state.lock().unwrap().app_paused_spotify };
+        if !already_paused {
+            let is_playing = media_is_playing(state).await;
+            if is_playing {
+                smooth_unduck_volume(state).await;
+                if media_control(state, false, device_id).await.is_ok() {
+                    let mut s = state.lock().unwrap();
+                    s.app_paused_spotify = true;
+                    s.auto_pause_count += 1;
+                    s.manual_pause_detected = false;
+                    s.video_pause_instant = Some(Instant::now());
+                    s.save();
+                    println!("[STILLSOUND] Paused media because video started (mode: {})", sync_mode);
+                }
+            } else {
                 let mut s = state.lock().unwrap();
-                s.app_paused_spotify = true;
-                s.auto_pause_count += 1;
-                s.manual_pause_detected = false;
-                s.video_pause_instant = Some(Instant::now());
-                s.save();
-                println!("[STILLSOUND] Paused media because video started (mode: {})", sync_mode);
-            }
-        } else {
-            let mut s = state.lock().unwrap();
-            if !s.app_paused_spotify {
-                s.manual_pause_detected = true;
+                if !s.app_paused_spotify {
+                    s.manual_pause_detected = true;
+                }
             }
         }
     } else if any_duck_playing {
