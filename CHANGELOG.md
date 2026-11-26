@@ -2,7 +2,7 @@
 
 All notable changes to **StillSound Studio** are documented here. See [README.md](README.md) for the quick feature overview as well.
 
-## [3.0.1] - 2026-11-27
+## [3.1.0] - 2026-11-27
 
 ### Added
 - **Boot Readiness Startup Screen (`startup_splash_enabled`)**: Added a Discord-style launch overlay that verifies loaded studio preferences, audio/call monitor engine readiness, and browser bridge + linked client status (with rotating quips, weekly focus pulse, click-to-skip, and a **Startup Screen** toggle in Settings).

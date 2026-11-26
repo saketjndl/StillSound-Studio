@@ -99,7 +99,7 @@ let currentHudMode = 'pinned';
 let currentHudScale = 100;
 let activeBridgeCount = 0;
 let activeBridgeClients = [];
-let appVersion = '3.0.1';
+let appVersion = '3.1.0';
 let latestUpdateUrl = '';
 
 let volTimer = null;
@@ -711,24 +711,100 @@ document.getElementById('dash-update-dismiss')?.addEventListener('click', (e) =>
     if (match) localStorage.setItem('stillsound_dismissed_update', match[1]);
 });
 
-function showWhatsNewIfNeeded(version) {
-    const seen = localStorage.getItem('stillsound_seen_version');
-    const banner = document.getElementById('whats-new-banner');
-    const titleEl = document.getElementById('whats-new-title');
-    if (!banner || !titleEl) return;
-    if (seen && seen !== version) {
-        titleEl.textContent = `Updated to StillSound v${version}`;
-        banner.style.display = 'flex';
-    } else if (!seen) {
-        localStorage.setItem('stillsound_seen_version', version);
+const WHATS_NEW_DATA = {
+    intro: "Hey! Lots of love went into v3.1.0 — cleaner visuals, smoother vibes, and way fewer weird bugs. Here's what dropped:",
+    fresh: [
+        { title: "Boot Readiness Screen", desc: "A quick launch check (like Discord's) that warms up your rules, audio engine, and browser bridge before dropping you in. Click anywhere to skip it, or toggle it off in Settings." },
+        { title: "No-Gradient Mode", desc: "Separate switches in Settings → Mini-HUD & Visuals to turn off the colorful album blur behind the Desktop app, Mini-HUD, and Extension popup if you prefer crisp dark contrast." },
+        { title: "Resizable Floating Mini-HUD", desc: "Drag the HUD Size slider from 60% (tiny pill) up to 175% (absolute unit) — plus Peek mode, custom lock, and a toggle to stop album art from spinning during lectures." },
+        { title: "Smoother Tabs & Tooltips", desc: "Sliding tab glider, cross-slide screens, calmer Settings accordions, and tiny 'i' info pills everywhere so nothing feels like a mystery." },
+        { title: "Quick Snooze & Study Presets", desc: "Snooze StillSound for 15m, 1h, or Until Restart right from the Console, or flip between Study, Chill, and Meeting rule presets in one tap." }
+    ],
+    fixes: [
+        { title: "No more YouTube pause-loops", desc: "Fixed Windows thinking your browser tab was the music player and trapping YouTube in an infinite pause/play fight." },
+        { title: "Brave stops cosplaying as Firefox", desc: "Multi-browser status now accurately shows 'Brave · Firefox' (not 'Firefox ×2') and won't double-trigger pauses across open browsers." },
+        { title: "Cut-off Mini-HUD text", desc: "Widened the floating capsule so your track and artist names actually have room to breathe." }
+    ],
+    wholeKit: [
+        { title: "Auto-Pause & Smooth Ducking", desc: "Pauses your music for YouTube/streams/lectures, and gently lowers ('ducks') it for short clips on X, Reddit, Instagram, or TikTok." },
+        { title: "Zero-Setup Universal Engine", desc: "Works offline with Spotify, Apple Music, or VLC via your OS — or link your Spotify account for cloud volume and device control." },
+        { title: "Smart Rewind & Mic Shield", desc: "Steps podcasts/tracks back a few seconds after long pauses, and ducks music when your mic lights up on Discord, Zoom, or Meet." },
+        { title: "Per-Site Matrix + OBS Overlay", desc: "Set Pause, Duck, or Ignore per website (plus custom domains), track your 7-day focus stats, and grab the :9877/overlay feed for streams." }
+    ]
+};
+
+function renderWhatsNewModal(version, isFirstBoot) {
+    const heading = document.getElementById('wn-heading');
+    const body = document.getElementById('wn-body');
+    const dismissBtn = document.getElementById('wn-dismiss-btn');
+    if (!body) return;
+
+    if (heading) {
+        heading.textContent = isFirstBoot ? `Welcome to v${version}` : `StillSound v${version} — What's Inside`;
     }
+    if (dismissBtn) {
+        dismissBtn.textContent = isFirstBoot ? "Nice, let's go!" : "Got it";
+    }
+
+    const renderList = (items) => items.map((item) =>
+        `<li class="wn-item"><strong>${item.title}:</strong> ${item.desc}</li>`
+    ).join('');
+
+    body.innerHTML = `
+        <div class="wn-intro">${WHATS_NEW_DATA.intro}</div>
+        <div>
+            <div class="wn-sec-title">Fresh in v${version}</div>
+            <ul class="wn-list">${renderList(WHATS_NEW_DATA.fresh)}</ul>
+        </div>
+        <div>
+            <div class="wn-sec-title fix">Annoying bugs squashed</div>
+            <ul class="wn-list">${renderList(WHATS_NEW_DATA.fixes)}</ul>
+        </div>
+        <div>
+            <div class="wn-sec-title kit">What StillSound does as a whole</div>
+            <ul class="wn-list">${renderList(WHATS_NEW_DATA.wholeKit)}</ul>
+        </div>
+    `;
+    body.scrollTop = 0;
 }
 
-document.getElementById('whats-new-link')?.addEventListener('click', () => {
+function openWhatsNewModal(isFirstBoot = false) {
+    const overlay = document.getElementById('wn-overlay');
+    if (!overlay) return;
+    renderWhatsNewModal(appVersion, isFirstBoot);
+    overlay.classList.add('open');
+    overlay.setAttribute('aria-hidden', 'false');
+}
+
+function closeWhatsNewModal() {
+    const overlay = document.getElementById('wn-overlay');
+    if (!overlay) return;
+    overlay.classList.remove('open');
+    overlay.setAttribute('aria-hidden', 'true');
     localStorage.setItem('stillsound_seen_version', appVersion);
     const banner = document.getElementById('whats-new-banner');
     if (banner) banner.style.display = 'none';
-    openExternalUrl(`${GITHUB}/releases/tag/v${appVersion}`);
+}
+
+document.getElementById('wn-close')?.addEventListener('click', closeWhatsNewModal);
+document.getElementById('wn-dismiss-btn')?.addEventListener('click', closeWhatsNewModal);
+document.getElementById('wn-overlay')?.addEventListener('click', (e) => {
+    if (e.target.id === 'wn-overlay') closeWhatsNewModal();
+});
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && document.getElementById('wn-overlay')?.classList.contains('open')) {
+        closeWhatsNewModal();
+    }
+});
+document.getElementById('show-whats-new')?.addEventListener('click', () => openWhatsNewModal(false));
+
+function shouldFlashWhatsNew(version) {
+    const seen = localStorage.getItem('stillsound_seen_version');
+    return !seen || seen !== version;
+}
+
+document.getElementById('whats-new-link')?.addEventListener('click', () => {
+    openWhatsNewModal(false);
 });
 document.getElementById('whats-new-dismiss')?.addEventListener('click', (e) => {
     e.stopPropagation();
@@ -779,7 +855,7 @@ async function checkUpdates(manual = false) {
                 openExternalUrl(assetUrl);
             }
         } else {
-            statusText.textContent = 'You are on the latest version';
+            statusText.textContent = "You're all caught up!";
             statusText.style.color = '';
         }
     } catch (e) {
@@ -1094,6 +1170,7 @@ window.addEventListener('DOMContentLoaded', async () => {
     let stateReady = false;
     let targetInitialTab = 'setup';
     let pollingStarted = false;
+    let flashChangelogAfterReveal = false;
 
     const startTrackPolling = () => {
         if (pollingStarted) return;
@@ -1102,12 +1179,19 @@ window.addEventListener('DOMContentLoaded', async () => {
         setInterval(fetchTrackInfo, 1500);
     };
 
+    const maybeFlashChangelog = () => {
+        if (!flashChangelogAfterReveal) return;
+        flashChangelogAfterReveal = false;
+        setTimeout(() => openWhatsNewModal(true), 220);
+    };
+
     const revealApp = (immediate = false) => {
         if (!bootSplash) {
             appShell?.classList.remove('boot-pending');
             if (targetInitialTab === 'console') goDash(true);
             else switchTab(targetInitialTab, true);
             startTrackPolling();
+            maybeFlashChangelog();
             return;
         }
         if (splashDismissed) return;
@@ -1121,6 +1205,7 @@ window.addEventListener('DOMContentLoaded', async () => {
                 switchTab(targetInitialTab, immediate);
             }
             startTrackPolling();
+            maybeFlashChangelog();
         };
 
         if (immediate) {
@@ -1220,7 +1305,7 @@ window.addEventListener('DOMContentLoaded', async () => {
 
         updateSettingsSummaries();
         updateHudModeExplain();
-        showWhatsNewIfNeeded(version);
+        flashChangelogAfterReveal = shouldFlashWhatsNew(version);
         checkUpdates(false);
 
         if (!showSplash) {

@@ -144,7 +144,7 @@
                 </div>
 
                 <div class="thankyou">
-                    <p>StillSound is free &amp; open source.<br>If it improves your workflow, consider starring us.</p>
+                    <p>StillSound is free &amp; open source.<br>If it saves your sanity, drop us a star.</p>
                     <a href="#" id="star-setup">&#9733; Star on GitHub</a> · <a href="#" id="feedback-setup">Report Bug</a>
                 </div>
             </div>
@@ -317,7 +317,7 @@
                 <div class="footer-cta">
                     built by saketjndl (.sodiumcyanide) · <a href="#" id="star-dash">&#9733; star</a> · <a href="#" id="feedback-dash">feedback</a>
                 </div>
-                <div class="footer-ver">v3.0.1</div>
+                <div class="footer-ver">v3.1.0</div>
             </div>
         </main>
 
@@ -555,7 +555,7 @@
                     <div class="acc-top">
                         <span class="acc-title">System, Engine &amp; Shortcuts</span>
                         <div class="acc-right">
-                            <span class="acc-pill" id="acc-sys-summary">v3.0.1</span>
+                            <span class="acc-pill" id="acc-sys-summary">v3.1.0</span>
                             <svg class="acc-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
                                 <path d="M6 9l6 6 6-6"/>
                             </svg>
@@ -655,10 +655,14 @@
                             <div class="ctrl-row">
                                 <div class="ctrl-info">
                                     <span class="ctrl-label">Updates</span>
-                                    <span id="update-status" class="ctrl-desc">You are on the latest version</span>
+                                    <span id="update-status" class="ctrl-desc">You're all caught up</span>
                                 </div>
-                                <button class="btn-flat" id="check-updates" type="button"
-                                    style="width: auto; margin: 0; padding: 6px 12px;">Check</button>
+                                <div style="display: flex; gap: 6px; align-items: center;">
+                                    <button class="btn-flat" id="show-whats-new" type="button"
+                                        style="width: auto; margin: 0; padding: 6px 10px; font-size: 11px;">What's New</button>
+                                    <button class="btn-flat" id="check-updates" type="button"
+                                        style="width: auto; margin: 0; padding: 6px 12px;">Check</button>
+                                </div>
                             </div>
                             <div class="ctrl-row" style="margin-top: 12px;">
                                 <div class="ctrl-info">
@@ -678,11 +682,30 @@
             </div>
 
             <div class="footer">
-                <div class="footer-ver">StillSound Studio v3.0.1</div>
+                <div class="footer-ver">StillSound Studio v3.1.0</div>
             </div>
         </main>
         </div>
     </div>
+    <!-- What's New Modal Overlay -->
+    <div class="wn-overlay" id="wn-overlay" aria-hidden="true">
+        <div class="wn-modal" id="wn-modal">
+            <div class="wn-header">
+                <div class="wn-ver-row">
+                    <span class="wn-emoji">🎉</span>
+                    <span class="wn-heading" id="wn-heading">What's New in v3.1.0</span>
+                </div>
+                <button class="wn-close" id="wn-close" type="button" title="Close">&times;</button>
+            </div>
+            <div class="wn-body" id="wn-body">
+                <!-- Populated by JS -->
+            </div>
+            <div class="wn-footer">
+                <button class="wn-dismiss-btn" id="wn-dismiss-btn" type="button">Nice, let's go!</button>
+            </div>
+        </div>
+    </div>
+
     <div class="ui-tooltip" id="ui-tooltip" role="tooltip" aria-hidden="true"></div>
     <script src="main.js" type="module"></script>
 </body>
