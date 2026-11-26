@@ -24,7 +24,7 @@
         "label": "mini_hud",
         "title": "StillSound HUD",
         "url": "minihud.html",
-        "width": 360,
+        "width": 400,
         "height": 62,
         "resizable": false,
         "decorations": false,

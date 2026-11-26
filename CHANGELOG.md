@@ -5,6 +5,7 @@ All notable changes to **StillSound Studio** are documented here. See [README.md
 ## [3.0.1] - 2026-11-27
 
 ### Added
+- **Desktop & Extension Ambient Gradient Toggles (`app_gradient_enabled`, `ext_gradient_enabled`)**: Added separate accessibility contrast switches inside **Settings → Mini-HUD & Visuals** to toggle blurred album-art backdrop gradients in the Desktop Studio + Mini-HUD and in the Browser Extension popup (preserving album cover art while removing background color glow).
 - **Resizable Floating Mini-HUD (`mini_hud_scale`)**: Added a **Mini-HUD Size** slider (`60%–175%`) with click-to-reset pill, proportional OS window resizing + CSS zoom scaling, live drag preview, and playful quips when set extra small or extra large.
 - **Spinning Mini-HUD Album Art Toggle (`album_art_spin`)**: Added Settings switch (`#spin-art-toggle`) so users can disable vinyl album rotation during lectures or focus sessions, switching Mini-HUD art to a calm rounded square.
 - **Timed Snooze & Dynamic Tray Status Badges**: Added `15m`, `1h`, and `Until Restart` Snooze Sync controls in both the Console UI and Tray menu (auto-expiring and restoring ducked/paused playback cleanly), plus state-tinted status dots on the tray icon.
@@ -17,6 +18,8 @@ All notable changes to **StillSound Studio** are documented here. See [README.md
 - **Rust Unit Tests**: Added tests in `lib.rs`, `macos_backend.rs`, and `mpris_backend.rs` covering domain matching, WS origins, AppleScript seek clamping/parsing, and MPRIS browser exclusion.
 
 ### Changed
+- Added animated `.tab-glider` pill and directional cross-slide view transitions when switching between Console, Rules, Settings, and Setup.
+- Widened the base Mini-HUD capsule (`350px` → `390px` inside `400px` frame) and tightened control spacing for ~60% more readable track/artist width.
 - Upgraded `@tauri-apps/cli` to `^2.12.6` (fixing Linux AppImage `.DirIcon` failure) and resized `32x32.png` / `128x128.png` icons to match exact pixel dimensions.
 - Switched OBS Browser Source overlay (`:9877/overlay`) to poll `/state` JSON directly instead of piggybacking on the extension WebSocket bridge.
 - Unified manual play/pause state handling across UI controls, tray menu, and global shortcuts (`Ctrl+Alt+P`, `Alt+Shift+P`), restoring ducked volume cleanly on tray quit.
@@ -26,7 +29,7 @@ All notable changes to **StillSound Studio** are documented here. See [README.md
 - Fixed Firefox Event Page & Chromium Service Worker cold-wake message drops and simultaneous multi-browser disconnections prematurely flipping status to `unlinked`.
 - Fixed the `.max(75)` ducking floor bug, Windows volume ducking leaking onto communication/system apps, and overlapping duck/unduck fade loops.
 - Fixed Firefox AMO MV3 metadata (`data_collection_permissions: ["none"]`, `strict_min_version: "140.0"`, `"storage"` permission) and missing `tiktok.com` manifest rules.
-- Fixed `"mini_hud"` ACL permissions in `capabilities/default.json`, macOS `data-tauri-drag-region` & `macOSPrivateApi` window support, cross-OS `settings.json` persistence path, Linux MPRIS pausing browsers, OAuth PKCE `state` validation & `204` token-refresh loops, `autostart_minimized`, `currentTrackName` empty-state reset, corrupted `#win-settings` header gear & mismatched Ducking `$` SVG icons, and 7-day weekly recap accuracy.
+- Fixed `"mini_hud"` ACL permissions in `capabilities/default.json`, macOS `data-tauri-drag-region` & `macOSPrivateApi` window support, cross-OS `settings.json` persistence path, Linux MPRIS pausing browsers, OAuth PKCE `state` validation & `204` token-refresh loops, `autostart_minimized`, `currentTrackName` empty-state reset, corrupted `#win-settings` header gear & mismatched Ducking `$` SVG icons, Settings accordion scrollbar reflow/wrapping, Mini-HUD subtitle flex-ellipsis truncation, and 7-day weekly recap accuracy.
 
 ## [3.0.0]
 - Smooth Audio Ducking & Fade Engine, Per-Site Action Matrix (`Pause | Duck | Ignore`), Smart Rewind, Mic/Call-Aware Mode, and Floating Mini-HUD.

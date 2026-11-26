@@ -104,6 +104,23 @@
       background: rgba(255, 76, 0, 0.15);
     }
 
+    body.no-gradient .ambient-bg {
+      display: none !important;
+      opacity: 0 !important;
+    }
+
+    body.no-gradient .island {
+      background: #0a0a0c;
+    }
+
+    body.no-gradient .music-section.playing {
+      background: #1c1c1e;
+    }
+
+    body.no-gradient .music-section.playing::before {
+      background: transparent;
+    }
+
     /* Album Art */
     .album-art-wrap {
       width: 52px;

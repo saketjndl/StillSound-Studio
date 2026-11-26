@@ -49,6 +49,24 @@ body {
     transition: opacity 1.5s ease;
 }
 
+body.no-gradient .ambient-bg {
+    display: none !important;
+    opacity: 0 !important;
+}
+
+body.no-gradient .music-section {
+    background: #141417;
+}
+
+body.no-gradient .ctrl-section,
+body.no-gradient .acc-card {
+    background: #111114;
+}
+
+body.no-gradient .acc-card.open {
+    background: #151519;
+}
+
 .ambient-bg.playing {
     opacity: 0.25;
     animation: ambient-pulse 5s infinite alternate ease-in-out;
@@ -163,6 +181,7 @@ input:focus-visible {
 /* --- Sub-Header Navigation Tabs --- */
 
 .app-tabs {
+    position: relative;
     display: grid;
     grid-template-columns: repeat(3, 1fr);
     gap: 4px;
@@ -174,7 +193,23 @@ input:focus-visible {
     flex-shrink: 0;
 }
 
+.tab-glider {
+    position: absolute;
+    top: 3px;
+    bottom: 3px;
+    left: 3px;
+    width: calc((100% - 14px) / 3);
+    border-radius: 7px;
+    background: rgba(255, 255, 255, 0.11);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+    pointer-events: none;
+    transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+    transform: translateX(calc(var(--tab-index, 0) * (100% + 4px)));
+}
+
 .tab-btn {
+    position: relative;
+    z-index: 1;
     background: none;
     border: none;
     color: var(--faint);
@@ -184,7 +219,7 @@ input:focus-visible {
     padding: 6px 8px;
     border-radius: 7px;
     cursor: pointer;
-    transition: background 0.15s ease, color 0.15s ease;
+    transition: color 0.2s ease;
 }
 
 .tab-btn:hover {
@@ -192,19 +227,60 @@ input:focus-visible {
 }
 
 .tab-btn.active {
-    background: rgba(255, 255, 255, 0.1);
     color: var(--text);
 }
 
 /* --- Screens --- */
 
-.view {
+.views-stage {
+    position: relative;
     flex: 1;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.view {
+    position: absolute;
+    inset: 0;
     overflow-y: auto;
     scrollbar-gutter: stable;
     padding: 12px 13px 16px 18px;
-    display: flex;
+    display: none;
     flex-direction: column;
+    will-change: transform, opacity;
+}
+
+.view.is-active,
+.view.is-leaving {
+    display: flex;
+}
+
+.view.is-leaving {
+    pointer-events: none;
+}
+
+.view.enter-right {
+    animation: viewEnterRight 0.28s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.view.enter-left {
+    animation: viewEnterLeft 0.28s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.view.enter-fade {
+    animation: fadeSlideIn 0.28s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.view.leave-left {
+    animation: viewLeaveLeft 0.24s cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+.view.leave-right {
+    animation: viewLeaveRight 0.24s cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+.view.leave-fade {
+    animation: fadeSlideOut 0.24s cubic-bezier(0.4, 0, 0.2, 1) both;
 }
 
 .view::-webkit-scrollbar {
@@ -220,22 +296,34 @@ input:focus-visible {
     border-radius: 5px;
 }
 
-.view.fade-in {
-    animation: fadeSlideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+@keyframes viewEnterRight {
+    0% { opacity: 0; transform: translateX(22px) scale(0.99); }
+    100% { opacity: 1; transform: translateX(0) scale(1); }
 }
 
-.view.fade-out {
-    animation: fadeSlideOut 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+@keyframes viewEnterLeft {
+    0% { opacity: 0; transform: translateX(-22px) scale(0.99); }
+    100% { opacity: 1; transform: translateX(0) scale(1); }
+}
+
+@keyframes viewLeaveLeft {
+    0% { opacity: 1; transform: translateX(0) scale(1); }
+    100% { opacity: 0; transform: translateX(-18px) scale(0.985); }
+}
+
+@keyframes viewLeaveRight {
+    0% { opacity: 1; transform: translateX(0) scale(1); }
+    100% { opacity: 0; transform: translateX(18px) scale(0.985); }
 }
 
 @keyframes fadeSlideIn {
-    0% { opacity: 0; transform: translateY(10px); }
-    100% { opacity: 1; transform: translateY(0); }
+    0% { opacity: 0; transform: translateY(10px) scale(0.99); }
+    100% { opacity: 1; transform: translateY(0) scale(1); }
 }
 
 @keyframes fadeSlideOut {
-    0% { opacity: 1; transform: translateY(0); }
-    100% { opacity: 0; transform: translateY(-10px); }
+    0% { opacity: 1; transform: translateY(0) scale(1); }
+    100% { opacity: 0; transform: translateY(-8px) scale(0.99); }
 }
 
 /* ============================

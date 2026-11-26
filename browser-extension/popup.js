@@ -158,6 +158,8 @@ btnNext.addEventListener('click', () => {
 function updateUI(res) {
     if (!res) return;
 
+    document.body.classList.toggle('no-gradient', res.extGradientEnabled === false);
+
     // --- Connection status ---
     if (res.connected) {
         island.classList.add('connected');

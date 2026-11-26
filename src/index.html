@@ -47,13 +47,15 @@
 
         <!-- Sub-Header Tab Bar (Console | Rules | Settings) -->
         <nav class="app-tabs" id="app-tabs" style="display:none">
+            <span class="tab-glider" id="tab-glider" aria-hidden="true"></span>
             <button class="tab-btn active" data-tab="console" id="tab-console" type="button">Console</button>
             <button class="tab-btn" data-tab="rules" id="tab-rules" type="button">Rules</button>
             <button class="tab-btn" data-tab="settings" id="tab-settings" type="button">Settings</button>
         </nav>
 
+        <div class="views-stage" id="views-stage">
         <!-- SETUP (Universal-First Onboarding) -->
-        <main class="view" id="v-setup">
+        <main class="view is-active" id="v-setup">
             <div class="setup">
                 <h1>StillSound</h1>
                 <p class="tagline">Auto-pauses or smoothly ducks your music whenever videos play or your mic activates.</p>
@@ -123,7 +125,7 @@
         </main>
 
         <!-- CONSOLE (DASHBOARD) -->
-        <main class="view dash" id="v-dash" style="display:none">
+        <main class="view dash" id="v-dash">
             <div class="notice-banner" id="whats-new-banner" style="display:none">
                 <div class="notice-body" id="whats-new-link">
                     <div class="notice-title" id="whats-new-title">Updated to StillSound</div>
@@ -294,7 +296,7 @@
         </main>
 
         <!-- RULES (Dedicated Site Matrix, Presets & Custom Domains) -->
-        <main class="view" id="v-rules" style="display:none">
+        <main class="view" id="v-rules">
             <div class="ctrl-section" style="padding: 12px;">
                 <div class="ctrl-row" style="margin-bottom: 8px;">
                     <span class="ctrl-label label-with-tip">Quick Presets <span class="info-tip" tabindex="0" data-tip="Study: pauses all videos &amp; social feeds. Chill: pauses streaming/lectures, gently ducks social clips. Meeting: ignores social clips, pauses calls &amp; videos.">i</span></span>
@@ -320,7 +322,7 @@
         </main>
 
         <!-- SETTINGS (Smooth Grid Accordions) -->
-        <main class="view" id="v-settings" style="display:none">
+        <main class="view" id="v-settings">
             <!-- 1. Audio, Ducking & Calls -->
             <div class="acc-card open" data-acc="audio">
                 <button class="acc-head" type="button" aria-expanded="true">
@@ -430,7 +432,7 @@
                             </svg>
                         </div>
                     </div>
-                    <span class="acc-sub">Floating capsule · Visibility mode · Cover spin</span>
+                    <span class="acc-sub">Capsule size · Spin · Gradients</span>
                 </button>
                 <div class="acc-collapse">
                     <div class="acc-body">
@@ -489,6 +491,30 @@
                                 </div>
                                 <label class="toggle">
                                     <input type="checkbox" id="hud-lock-toggle">
+                                    <span class="toggle-track"></span>
+                                </label>
+                            </div>
+
+                            <div class="sep" style="margin: 14px 0 12px;"></div>
+
+                            <div class="ctrl-row">
+                                <div class="ctrl-info">
+                                    <span class="ctrl-label label-with-tip">App Ambient Gradient <span class="info-tip" tabindex="0" data-tip="Toggles the blurred album-art backdrop in Desktop Studio and state gradient fills in the Mini-HUD. Turn off for crisp dark contrast.">i</span></span>
+                                    <span class="ctrl-desc">Album color glow behind Console &amp; Mini-HUD.</span>
+                                </div>
+                                <label class="toggle">
+                                    <input type="checkbox" id="app-gradient-toggle" checked>
+                                    <span class="toggle-track"></span>
+                                </label>
+                            </div>
+
+                            <div class="ctrl-row" style="margin-top: 12px;">
+                                <div class="ctrl-info">
+                                    <span class="ctrl-label label-with-tip">Extension Ambient Gradient <span class="info-tip" tabindex="0" data-tip="Turns off the blurred album glow behind text in the Chrome/Firefox extension popup while keeping album cover art visible.">i</span></span>
+                                    <span class="ctrl-desc">Album color glow inside browser extension popup.</span>
+                                </div>
+                                <label class="toggle">
+                                    <input type="checkbox" id="ext-gradient-toggle" checked>
                                     <span class="toggle-track"></span>
                                 </label>
                             </div>
@@ -619,6 +645,7 @@
                 <div class="footer-ver">StillSound Studio v3.0.1</div>
             </div>
         </main>
+        </div>
     </div>
     <div class="ui-tooltip" id="ui-tooltip" role="tooltip" aria-hidden="true"></div>
     <script src="main.js" type="module"></script>

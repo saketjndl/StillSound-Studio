@@ -53,10 +53,11 @@ fn config_broadcaster() -> &'static tokio::sync::broadcast::Sender<String> {
     })
 }
 
-fn broadcast_site_config(site_actions: &HashMap<String, SiteAction>) {
+fn broadcast_site_config(site_actions: &HashMap<String, SiteAction>, ext_gradient_enabled: bool) {
     let config_msg = serde_json::json!({
         "type": "site_config",
-        "site_actions": site_actions
+        "site_actions": site_actions,
+        "ext_gradient_enabled": ext_gradient_enabled
     });
     if let Ok(json) = serde_json::to_string(&config_msg) {
         let _ = config_broadcaster().send(json);
@@ -165,6 +166,10 @@ pub struct AppState {
     pub mini_hud_locked: bool,
     #[serde(default = "default_hud_scale")]
     pub mini_hud_scale: u32,
+    #[serde(default = "default_true")]
+    pub app_gradient_enabled: bool,
+    #[serde(default = "default_true")]
+    pub ext_gradient_enabled: bool,
     #[serde(default)]
     pub mini_hud_pos: Option<(i32, i32)>,
     #[serde(default)]
@@ -202,7 +207,7 @@ pub struct AppState {
     pub last_music_playing: bool,
 }
 
-const HUD_BASE_W: f64 = 360.0;
+const HUD_BASE_W: f64 = 400.0;
 const HUD_BASE_H: f64 = 62.0;
 
 fn default_true() -> bool { true }
@@ -377,6 +382,8 @@ impl Default for AppState {
             mini_hud_mode: "pinned".to_string(),
             mini_hud_locked: false,
             mini_hud_scale: 100,
+            app_gradient_enabled: true,
+            ext_gradient_enabled: true,
             mini_hud_pos: None,
             site_actions: {
                 let mut map = HashMap::new();
@@ -724,6 +731,8 @@ async fn get_current_track_info(state: &Arc<Mutex<AppState>>) -> serde_json::Val
         mini_hud_mode,
         mini_hud_locked,
         mini_hud_scale,
+        app_gradient_enabled,
+        ext_gradient_enabled,
         active_video_host,
         snooze_secs,
         snooze_indefinite,
@@ -744,6 +753,8 @@ async fn get_current_track_info(state: &Arc<Mutex<AppState>>) -> serde_json::Val
             s.mini_hud_mode.clone(),
             s.mini_hud_locked,
             clamp_hud_scale(s.mini_hud_scale),
+            s.app_gradient_enabled,
+            s.ext_gradient_enabled,
             s.active_video_host.clone(),
             snooze_remaining_secs(&s),
             s.snooze_indefinite,
@@ -784,6 +795,8 @@ async fn get_current_track_info(state: &Arc<Mutex<AppState>>) -> serde_json::Val
         obj.insert("mini_hud_mode".to_string(), serde_json::Value::String(mini_hud_mode));
         obj.insert("mini_hud_locked".to_string(), serde_json::Value::Bool(mini_hud_locked));
         obj.insert("mini_hud_scale".to_string(), serde_json::Value::Number(mini_hud_scale.into()));
+        obj.insert("app_gradient_enabled".to_string(), serde_json::Value::Bool(app_gradient_enabled));
+        obj.insert("ext_gradient_enabled".to_string(), serde_json::Value::Bool(ext_gradient_enabled));
         obj.insert("active_video_host".to_string(), serde_json::json!(active_video_host));
         obj.insert("snooze_remaining_secs".to_string(), serde_json::json!(snooze_secs));
         obj.insert("snooze_indefinite".to_string(), serde_json::Value::Bool(snooze_indefinite));
@@ -942,11 +955,15 @@ async fn start_extension_bridge<R: Runtime>(app: AppHandle<R>, state: Arc<Mutex<
                 let _ = write.send(tokio_tungstenite::tungstenite::Message::Text(json)).await;
             }
 
-            // Send site actions config
-            let site_actions = state_clone.lock().unwrap().site_actions.clone();
+            // Send site actions & extension visual config
+            let (site_actions, ext_grad) = {
+                let s = state_clone.lock().unwrap();
+                (s.site_actions.clone(), s.ext_gradient_enabled)
+            };
             let config_msg = serde_json::json!({
                 "type": "site_config",
-                "site_actions": site_actions
+                "site_actions": site_actions,
+                "ext_gradient_enabled": ext_grad
             });
             if let Ok(json) = serde_json::to_string(&config_msg) {
                 let _ = write.send(tokio_tungstenite::tungstenite::Message::Text(json)).await;
@@ -973,8 +990,11 @@ async fn start_extension_bridge<R: Runtime>(app: AppHandle<R>, state: Arc<Mutex<
                                 }
                             }
                             Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {
-                                let site_actions = state_clone.lock().unwrap().site_actions.clone();
-                                let msg = serde_json::json!({ "type": "site_config", "site_actions": site_actions });
+                                let (site_actions, ext_grad) = {
+                                    let s = state_clone.lock().unwrap();
+                                    (s.site_actions.clone(), s.ext_gradient_enabled)
+                                };
+                                let msg = serde_json::json!({ "type": "site_config", "site_actions": site_actions, "ext_gradient_enabled": ext_grad });
                                 if let Ok(json) = serde_json::to_string(&msg) {
                                     let _ = write.send(tokio_tungstenite::tungstenite::Message::Text(json)).await;
                                 }
@@ -1025,7 +1045,7 @@ async fn start_extension_bridge<R: Runtime>(app: AppHandle<R>, state: Arc<Mutex<
                                                 let mut s = state_clone.lock().unwrap();
                                                 s.site_actions.insert(clean_site, act);
                                                 s.save();
-                                                broadcast_site_config(&s.site_actions);
+                                                broadcast_site_config(&s.site_actions, s.ext_gradient_enabled);
                                                 s.site_actions.clone()
                                             };
                                             let _ = app_clone.emit("site_actions_updated", actions_snapshot);
@@ -1933,6 +1953,8 @@ fn update_settings(
     mini_hud_mode: Option<String>,
     mini_hud_locked: Option<bool>,
     mini_hud_scale: Option<u32>,
+    app_gradient_enabled: Option<bool>,
+    ext_gradient_enabled: Option<bool>,
 ) -> Result<(), String> {
     use tauri_plugin_autostart::ManagerExt;
     
@@ -1994,11 +2016,18 @@ fn update_settings(
     if let Some(mhsc) = mini_hud_scale {
         s.mini_hud_scale = clamp_hud_scale(mhsc);
     }
+    if let Some(app_grad) = app_gradient_enabled {
+        s.app_gradient_enabled = app_grad;
+    }
+    if let Some(ext_grad) = ext_gradient_enabled {
+        s.ext_gradient_enabled = ext_grad;
+    }
     let scale_to_apply = clamp_hud_scale(s.mini_hud_scale);
     if album_art_spin.is_some()
         || mini_hud_mode.is_some()
         || mini_hud_locked.is_some()
         || mini_hud_scale.is_some()
+        || app_gradient_enabled.is_some()
     {
         let _ = app.emit(
             "hud_prefs_changed",
@@ -2007,12 +2036,13 @@ fn update_settings(
                 "mini_hud_mode": s.mini_hud_mode,
                 "mini_hud_locked": s.mini_hud_locked,
                 "mini_hud_scale": scale_to_apply,
+                "app_gradient_enabled": s.app_gradient_enabled,
             }),
         );
     }
 
     s.save();
-    broadcast_site_config(&s.site_actions);
+    broadcast_site_config(&s.site_actions, s.ext_gradient_enabled);
     drop(s);
     if mini_hud_scale.is_some() {
         apply_mini_hud_scale(&app, scale_to_apply);
@@ -2275,7 +2305,7 @@ fn set_site_action<R: Runtime>(
     let act = parse_site_action(&action);
     s.site_actions.insert(clean, act);
     s.save();
-    broadcast_site_config(&s.site_actions);
+    broadcast_site_config(&s.site_actions, s.ext_gradient_enabled);
     let _ = app.emit("site_actions_updated", s.site_actions.clone());
     Ok(())
 }
@@ -2291,7 +2321,7 @@ fn remove_site_action<R: Runtime>(
     let mut s = state.0.lock().unwrap();
     s.site_actions.remove(&clean);
     s.save();
-    broadcast_site_config(&s.site_actions);
+    broadcast_site_config(&s.site_actions, s.ext_gradient_enabled);
     let _ = app.emit("site_actions_updated", s.site_actions.clone());
     Ok(())
 }
@@ -2307,7 +2337,7 @@ fn apply_site_preset<R: Runtime>(
         return Err(format!("Unknown preset: {}", preset));
     }
     s.save();
-    broadcast_site_config(&s.site_actions);
+    broadcast_site_config(&s.site_actions, s.ext_gradient_enabled);
     let _ = app.emit("site_actions_updated", s.site_actions.clone());
     Ok(s.site_actions.clone())
 }
@@ -2987,8 +3017,8 @@ mod tests {
         assert_eq!(clamp_hud_scale(20), 60);
         assert_eq!(clamp_hud_scale(100), 100);
         assert_eq!(clamp_hud_scale(250), 175);
-        assert_eq!(hud_logical_dimensions(100), (360.0, 62.0));
-        assert_eq!(hud_logical_dimensions(60), (216.0, 38.0));
-        assert_eq!(hud_logical_dimensions(175), (630.0, 109.0));
+        assert_eq!(hud_logical_dimensions(100), (400.0, 62.0));
+        assert_eq!(hud_logical_dimensions(60), (240.0, 38.0));
+        assert_eq!(hud_logical_dimensions(175), (700.0, 109.0));
     }
 }

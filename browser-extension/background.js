@@ -29,6 +29,7 @@ let spotifyInfo = {
     is_ducked: false,
     ducking_level: 20
 };
+let extGradientEnabled = true;
 
 function detectBrowserName() {
     if (isFirefox) return 'Firefox';
@@ -118,7 +119,8 @@ function persistSessionState() {
             [SESSION_KEY]: {
                 tabStates: Array.from(tabStates.entries()),
                 aggregateState,
-                siteActions
+                siteActions,
+                extGradientEnabled
             }
         };
         const res = sessionStore.set(payload);
@@ -152,6 +154,9 @@ const sessionReady = (async () => {
             }
             if (typeof saved.aggregateState === 'string' && aggregateState === 'idle') {
                 aggregateState = saved.aggregateState;
+            }
+            if (typeof saved.extGradientEnabled === 'boolean') {
+                extGradientEnabled = saved.extGradientEnabled;
             }
         }
     } catch (e) {}
@@ -276,6 +281,10 @@ function connect() {
                     is_ducked: data.is_ducked || false,
                     ducking_level: data.ducking_level || 20
                 };
+                if (typeof data.ext_gradient_enabled === 'boolean') {
+                    extGradientEnabled = data.ext_gradient_enabled;
+                    persistSessionState();
+                }
             } else if (data.type === 'site_config') {
                 if (data.site_actions) {
                     siteActions = data.site_actions;
@@ -285,6 +294,9 @@ function connect() {
                     for (const [s, enabled] of Object.entries(data.sites)) {
                         siteActions[s] = enabled ? 'pause' : 'ignore';
                     }
+                }
+                if (typeof data.ext_gradient_enabled === 'boolean') {
+                    extGradientEnabled = data.ext_gradient_enabled;
                 }
                 for (const tabState of tabStates.values()) {
                     tabState.action = getSiteAction(tabState.hostname);
@@ -451,7 +463,8 @@ api.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 isDucked: aggregateState === 'duck',
                 ytDetected: Array.from(tabStates.values()).some((t) => t.action !== 'ignore'),
                 spotify: spotifyInfo,
-                siteActions
+                siteActions,
+                extGradientEnabled
             };
         }
 

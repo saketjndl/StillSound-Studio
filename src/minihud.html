@@ -45,7 +45,7 @@
 
         /* --- Capsule Container --- */
         .capsule {
-            width: 350px;
+            width: 390px;
             height: 54px;
             zoom: var(--hud-scale, 1);
             background: var(--bg);
@@ -53,10 +53,10 @@
             -webkit-backdrop-filter: blur(28px) saturate(2.0);
             border: 1px solid var(--border);
             border-radius: 9999px;
-            padding: 5px 12px 5px 8px;
+            padding: 5px 10px 5px 7px;
             display: flex;
             align-items: center;
-            gap: 10px;
+            gap: 9px;
             position: relative;
             cursor: default;
             transition: border-color 0.25s ease, background 0.25s ease, opacity 0.4s ease, transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
@@ -75,6 +75,11 @@
         .capsule.paused {
             border-color: rgba(255, 76, 0, 0.5);
             background: linear-gradient(135deg, rgba(32, 16, 12, 0.98) 0%, rgba(46, 20, 14, 0.98) 100%);
+        }
+
+        .capsule.no-gradient.ducked,
+        .capsule.no-gradient.paused {
+            background: rgba(16, 16, 20, 0.98);
         }
 
         /* Auto-Hide: Completely slide up off screen */
@@ -202,10 +207,13 @@
             display: flex;
             align-items: center;
             gap: 6px;
+            min-width: 0;
             pointer-events: none;
         }
 
         .track-title {
+            flex: 1;
+            min-width: 0;
             font-size: 13px;
             font-weight: 600;
             color: #ffffff;
@@ -220,13 +228,19 @@
             display: flex;
             align-items: center;
             gap: 5px;
+            min-width: 0;
             font-size: 11px;
             color: var(--dim);
+            line-height: 1.2;
+            pointer-events: none;
+        }
+
+        #track-sub-text {
+            flex: 0 1 auto;
+            min-width: 0;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
-            line-height: 1.2;
-            pointer-events: none;
         }
 
         .status-badge {
@@ -237,6 +251,7 @@
             border-radius: 4px;
             text-transform: uppercase;
             letter-spacing: 0.04em;
+            flex-shrink: 0;
             display: none;
         }
 
@@ -265,7 +280,7 @@
         .controls {
             display: flex;
             align-items: center;
-            gap: 3px;
+            gap: 2px;
             flex-shrink: 0;
         }
 
@@ -277,8 +292,8 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            width: 28px;
-            height: 28px;
+            width: 26px;
+            height: 26px;
             border-radius: 50%;
             transition: all 0.15s ease;
         }
@@ -293,8 +308,8 @@
         }
 
         .ctrl-btn.play-pause {
-            width: 30px;
-            height: 30px;
+            width: 28px;
+            height: 28px;
             background: rgba(255, 255, 255, 0.12);
             color: #ffffff;
         }
@@ -316,8 +331,8 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            width: 22px;
-            height: 22px;
+            width: 20px;
+            height: 20px;
             border-radius: 50%;
             background: rgba(255, 255, 255, 0.06);
             border: none;
@@ -661,6 +676,9 @@
             if (typeof data.mini_hud_scale === 'number' && data.mini_hud_scale !== hudScale) {
                 applyHudScale(data.mini_hud_scale);
             }
+            if (typeof data.app_gradient_enabled === 'boolean') {
+                capsule.classList.toggle('no-gradient', !data.app_gradient_enabled);
+            }
 
             const peekKey = `${data.track_name || ''}|${!!data.is_ducked}|${!!data.yt_playing}|${!!data.app_paused_spotify}|${!!data.mic_active}|${data.sync_effective !== false}`;
             if (lastPeekKey && peekKey !== lastPeekKey && hudMode === 'peek') {
@@ -755,6 +773,9 @@
                 }
                 if (typeof p.mini_hud_scale === 'number') {
                     applyHudScale(p.mini_hud_scale);
+                }
+                if (typeof p.app_gradient_enabled === 'boolean') {
+                    capsule.classList.toggle('no-gradient', !p.app_gradient_enabled);
                 }
             });
         }

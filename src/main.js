@@ -70,6 +70,8 @@ const hudSizeNum = document.getElementById('hud-size-num');
 const hudSizeQuip = document.getElementById('hud-size-quip');
 const spinArtToggle = document.getElementById('spin-art-toggle');
 const hudLockToggle = document.getElementById('hud-lock-toggle');
+const appGradientToggle = document.getElementById('app-gradient-toggle');
+const extGradientToggle = document.getElementById('ext-gradient-toggle');
 const autostartToggle = document.getElementById('autostart-toggle');
 const autostartMinimizedToggle = document.getElementById('autostart-minimized-toggle');
 const minimizeToTrayToggle = document.getElementById('minimize-to-tray-toggle');
@@ -149,26 +151,75 @@ function normalizeDomain(raw) {
     return /^[a-z0-9.-]+\.[a-z]{2,}$/.test(val) ? val : '';
 }
 
-function switchTab(tab) {
+const TAB_ORDER = { setup: -1, console: 0, rules: 1, settings: 2 };
+const VIEW_ELS = { setup: vSetup, console: vDash, rules: vRules, settings: vSettings };
+let tabTransitionTimer = null;
+
+function applyAppGradientUi(enabled) {
+    document.body.classList.toggle('no-gradient', !enabled);
+}
+
+function clearViewAnimClasses(el) {
+    if (!el) return;
+    el.classList.remove('is-leaving', 'enter-right', 'enter-left', 'enter-fade', 'leave-left', 'leave-right', 'leave-fade');
+}
+
+function switchTab(tab, instant = false) {
     hideTooltip();
     const valid = ['setup', 'console', 'rules', 'settings'];
     if (!valid.includes(tab)) tab = 'console';
-    currentTab = tab;
 
-    vSetup.style.display = tab === 'setup' ? 'flex' : 'none';
-    vDash.style.display = tab === 'console' ? 'flex' : 'none';
-    vRules.style.display = tab === 'rules' ? 'flex' : 'none';
-    vSettings.style.display = tab === 'settings' ? 'flex' : 'none';
+    const prevTab = currentTab;
+    const nextEl = VIEW_ELS[tab];
+    const prevEl = VIEW_ELS[prevTab];
+    currentTab = tab;
 
     const showTabs = tab !== 'setup';
     if (appTabs) {
         appTabs.style.display = showTabs ? 'grid' : 'none';
+        if (TAB_ORDER[tab] >= 0) {
+            appTabs.style.setProperty('--tab-index', String(TAB_ORDER[tab]));
+        }
         appTabs.querySelectorAll('.tab-btn').forEach((btn) => {
             btn.classList.toggle('active', btn.dataset.tab === tab);
         });
     }
     if (winSettingsBtn) {
         winSettingsBtn.style.display = showTabs ? 'none' : 'flex';
+    }
+
+    clearTimeout(tabTransitionTimer);
+    Object.entries(VIEW_ELS).forEach(([k, el]) => {
+        if (!el) return;
+        if (instant || k !== prevTab) clearViewAnimClasses(el);
+        if (instant || (k !== prevTab && k !== tab)) {
+            el.classList.remove('is-active');
+        }
+    });
+
+    if (instant || !prevEl || prevEl === nextEl) {
+        nextEl?.classList.add('is-active');
+    } else {
+        const prevIdx = TAB_ORDER[prevTab] ?? 0;
+        const nextIdx = TAB_ORDER[tab] ?? 0;
+        let enterCls = 'enter-fade';
+        let leaveCls = 'leave-fade';
+        if (prevIdx >= 0 && nextIdx >= 0) {
+            enterCls = nextIdx > prevIdx ? 'enter-right' : 'enter-left';
+            leaveCls = nextIdx > prevIdx ? 'leave-left' : 'leave-right';
+        }
+
+        prevEl.classList.remove('is-active');
+        clearViewAnimClasses(prevEl);
+        prevEl.classList.add('is-leaving', leaveCls);
+
+        clearViewAnimClasses(nextEl);
+        nextEl.classList.add('is-active', enterCls);
+
+        tabTransitionTimer = setTimeout(() => {
+            clearViewAnimClasses(prevEl);
+            clearViewAnimClasses(nextEl);
+        }, 290);
     }
 
     if (tab === 'console') {
@@ -289,8 +340,8 @@ async function setSyncModeAndNavigate(mode) {
     }
 }
 
-function goDash() {
-    switchTab('console');
+function goDash(instant = false) {
+    switchTab('console', instant);
     if (currentMode === 'spotify') {
         invoke('get_spotify_volume').then((vol) => {
             volSlider.value = vol;
@@ -580,6 +631,11 @@ miniHudToggle?.addEventListener('change', (e) => {
 });
 spinArtToggle?.addEventListener('change', saveSettings);
 hudLockToggle?.addEventListener('change', saveSettings);
+appGradientToggle?.addEventListener('change', (e) => {
+    applyAppGradientUi(e.target.checked);
+    saveSettings();
+});
+extGradientToggle?.addEventListener('change', saveSettings);
 
 if (hudModeSelector) {
     hudModeSelector.querySelectorAll('.seg-btn').forEach((btn) => {
@@ -864,7 +920,9 @@ async function saveSettings() {
             albumArtSpin: spinArtToggle ? spinArtToggle.checked : true,
             miniHudMode: currentHudMode,
             miniHudLocked: hudLockToggle ? hudLockToggle.checked : false,
-            miniHudScale: currentHudScale
+            miniHudScale: currentHudScale,
+            appGradientEnabled: appGradientToggle ? appGradientToggle.checked : true,
+            extGradientEnabled: extGradientToggle ? extGradientToggle.checked : true
         });
     } catch (e) {
         console.error('[STILLSOUND] Failed to save settings:', e);
@@ -1039,6 +1097,9 @@ window.addEventListener('DOMContentLoaded', async () => {
         miniHudToggle.checked = !!s.mini_hud_enabled;
         if (spinArtToggle) spinArtToggle.checked = s.album_art_spin !== false;
         if (hudLockToggle) hudLockToggle.checked = !!s.mini_hud_locked;
+        if (appGradientToggle) appGradientToggle.checked = s.app_gradient_enabled !== false;
+        if (extGradientToggle) extGradientToggle.checked = s.ext_gradient_enabled !== false;
+        applyAppGradientUi(s.app_gradient_enabled !== false);
         currentHudMode = s.mini_hud_mode || 'pinned';
         hudModeSelector?.querySelectorAll('.seg-btn').forEach((b) => {
             b.classList.toggle('active', b.dataset.hudMode === currentHudMode);
@@ -1055,9 +1116,9 @@ window.addEventListener('DOMContentLoaded', async () => {
         updateDashForMode(currentMode);
 
         if (isSpotifyReady || currentMode === 'universal') {
-            goDash();
+            goDash(true);
         } else {
-            switchTab('setup');
+            switchTab('setup', true);
         }
 
         const version = await invoke('get_app_version');
@@ -1382,6 +1443,10 @@ listen('hud_prefs_changed', (ev) => {
     if (typeof p.mini_hud_scale === 'number') {
         updateHudSizeUi(p.mini_hud_scale);
         updateSettingsSummaries();
+    }
+    if (typeof p.app_gradient_enabled === 'boolean') {
+        if (appGradientToggle) appGradientToggle.checked = p.app_gradient_enabled;
+        applyAppGradientUi(p.app_gradient_enabled);
     }
 });
 
