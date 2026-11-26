@@ -60,7 +60,7 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          STILLSOUND_CLIENT_ID: ${{ secrets.STILLSOUND_CLIENT_ID }}
+          STILLSOUND_CLIENT_ID: ${{ secrets.STILLSOUND_CLIENT_ID }} # Repository secret – set in repo Settings → Secrets
         with:
           tagName: ${{ github.ref_name }}
           releaseName: 'StillSound Studio ${{ github.ref_name }}'
