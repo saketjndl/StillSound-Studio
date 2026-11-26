@@ -65,6 +65,9 @@ const micActionRow = document.getElementById('mic-action-row');
 const micActionSelector = document.getElementById('mic-action-selector');
 const miniHudToggle = document.getElementById('mini-hud-toggle');
 const hudModeSelector = document.getElementById('hud-mode-selector');
+const hudSizeSlider = document.getElementById('hud-size-slider');
+const hudSizeNum = document.getElementById('hud-size-num');
+const hudSizeQuip = document.getElementById('hud-size-quip');
 const spinArtToggle = document.getElementById('spin-art-toggle');
 const hudLockToggle = document.getElementById('hud-lock-toggle');
 const autostartToggle = document.getElementById('autostart-toggle');
@@ -90,6 +93,7 @@ let currentMicAction = 'duck';
 let smartRewindSeconds = 5;
 let smartRewindThresholdSecs = 30;
 let currentHudMode = 'pinned';
+let currentHudScale = 100;
 let activeBridgeCount = 0;
 let activeBridgeClients = [];
 let appVersion = '3.0.1';
@@ -97,6 +101,7 @@ let latestUpdateUrl = '';
 
 let volTimer = null;
 let duckTimer = null;
+let hudSizeTimer = null;
 
 // --- Helpers ---
 
@@ -520,6 +525,55 @@ if (micActionSelector) {
     });
 }
 
+function getHudSizeQuip(pct) {
+    if (pct <= 60) return { text: 'Ant-sized HUD. Magnifying glass sold separately.', tone: 'small' };
+    if (pct <= 70) return { text: 'Squint mode unlocked. Even the album art wants glasses.', tone: 'small' };
+    if (pct <= 85) return { text: 'Stealth pocket pill — blink and you might lose it.', tone: 'small' };
+    if (pct < 100) return { text: 'Trim & tidy — slightly slimmer than stock.', tone: 'normal' };
+    if (pct === 100) return { text: 'Classic proportions — balanced, crisp desktop fit.', tone: 'normal' };
+    if (pct <= 115) return { text: 'A little extra legroom for high-DPI monitors.', tone: 'normal' };
+    if (pct <= 135) return { text: 'Chunky mode enabled. No song title left behind.', tone: 'big' };
+    if (pct <= 155) return { text: 'Absolute unit. Readable from across the room.', tone: 'big' };
+    if (pct <= 170) return { text: 'Certified chonker. Half billboard, half music player.', tone: 'big' };
+    return { text: 'Sir, that is an aircraft carrier. Your wallpaper filed a complaint.', tone: 'big' };
+}
+
+function updateHudSizeUi(scaleVal) {
+    const pct = Math.max(60, Math.min(175, parseInt(scaleVal, 10) || 100));
+    currentHudScale = pct;
+    if (hudSizeSlider) {
+        hudSizeSlider.value = pct;
+        updateSliderFill(hudSizeSlider);
+    }
+    if (hudSizeNum) hudSizeNum.textContent = `${pct}%`;
+    if (hudSizeQuip) {
+        const q = getHudSizeQuip(pct);
+        hudSizeQuip.textContent = q.text;
+        hudSizeQuip.classList.toggle('tone-small', q.tone === 'small');
+        hudSizeQuip.classList.toggle('tone-big', q.tone === 'big');
+    }
+}
+
+hudSizeSlider?.addEventListener('input', (e) => {
+    updateHudSizeUi(e.target.value);
+    updateSettingsSummaries();
+    clearTimeout(hudSizeTimer);
+    hudSizeTimer = setTimeout(() => {
+        invoke('set_hud_prefs', { scale: currentHudScale }).catch(console.error);
+    }, 80);
+});
+
+hudSizeSlider?.addEventListener('change', () => {
+    clearTimeout(hudSizeTimer);
+    saveSettings();
+});
+
+hudSizeNum?.addEventListener('click', () => {
+    if (currentHudScale === 100) return;
+    updateHudSizeUi(100);
+    saveSettings();
+});
+
 miniHudToggle?.addEventListener('change', (e) => {
     invoke('toggle_mini_hud', { show: e.target.checked }).catch(console.error);
     saveSettings();
@@ -694,7 +748,8 @@ function updateSettingsSummaries() {
     if (hudEl) {
         const onTxt = miniHudToggle?.checked ? 'On' : 'Off';
         const modeTxt = currentHudMode === 'peek' ? 'Peek' : currentHudMode === 'autohide' ? 'Hide' : 'Pinned';
-        hudEl.textContent = `${onTxt} · ${modeTxt}`;
+        const scaleTxt = currentHudScale !== 100 ? ` · ${currentHudScale}%` : '';
+        hudEl.textContent = `${onTxt} · ${modeTxt}${scaleTxt}`;
     }
     if (sysEl) {
         sysEl.textContent = `${currentMode === 'spotify' ? 'Spotify' : 'Universal'} · v${appVersion}`;
@@ -808,7 +863,8 @@ async function saveSettings() {
             miniHudEnabled: miniHudToggle.checked,
             albumArtSpin: spinArtToggle ? spinArtToggle.checked : true,
             miniHudMode: currentHudMode,
-            miniHudLocked: hudLockToggle ? hudLockToggle.checked : false
+            miniHudLocked: hudLockToggle ? hudLockToggle.checked : false,
+            miniHudScale: currentHudScale
         });
     } catch (e) {
         console.error('[STILLSOUND] Failed to save settings:', e);
@@ -987,6 +1043,7 @@ window.addEventListener('DOMContentLoaded', async () => {
         hudModeSelector?.querySelectorAll('.seg-btn').forEach((b) => {
             b.classList.toggle('active', b.dataset.hudMode === currentHudMode);
         });
+        updateHudSizeUi(s.mini_hud_scale != null ? s.mini_hud_scale : 100);
 
         if (s.site_actions) siteActions = s.site_actions;
         renderSiteMatrix();
@@ -1321,6 +1378,10 @@ listen('hud_prefs_changed', (ev) => {
         });
         updateSettingsSummaries();
         updateHudModeExplain();
+    }
+    if (typeof p.mini_hud_scale === 'number') {
+        updateHudSizeUi(p.mini_hud_scale);
+        updateSettingsSummaries();
     }
 });
 

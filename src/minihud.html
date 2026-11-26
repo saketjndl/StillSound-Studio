@@ -47,6 +47,7 @@
         .capsule {
             width: 350px;
             height: 54px;
+            zoom: var(--hud-scale, 1);
             background: var(--bg);
             backdrop-filter: blur(28px) saturate(2.0);
             -webkit-backdrop-filter: blur(28px) saturate(2.0);
@@ -441,11 +442,18 @@
         let isPlaying = false;
         let isPinned = false; // false = unlocked/draggable by default; persisted via mini_hud_locked
         let hudMode = 'pinned'; // 'pinned' | 'peek' | 'autohide'
+        let hudScale = 100;
         let idleTimer = null;
         let peekTimer = null;
         let isAutoHidden = false;
         let isHovered = false;
         let lastPeekKey = '';
+
+        function applyHudScale(scalePct) {
+            const clamped = Math.max(60, Math.min(175, Math.round(Number(scalePct) || 100)));
+            hudScale = clamped;
+            document.documentElement.style.setProperty('--hud-scale', (clamped / 100).toFixed(2));
+        }
 
         function applyLockUi() {
             btnPin.classList.toggle('active', isPinned);
@@ -650,6 +658,9 @@
                 applyHudModeUi();
                 resetIdleState();
             }
+            if (typeof data.mini_hud_scale === 'number' && data.mini_hud_scale !== hudScale) {
+                applyHudScale(data.mini_hud_scale);
+            }
 
             const peekKey = `${data.track_name || ''}|${!!data.is_ducked}|${!!data.yt_playing}|${!!data.app_paused_spotify}|${!!data.mic_active}|${data.sync_effective !== false}`;
             if (lastPeekKey && peekKey !== lastPeekKey && hudMode === 'peek') {
@@ -741,6 +752,9 @@
                     applyHudModeUi();
                     if (hudMode === 'peek') triggerPeek(2600);
                     else resetIdleState();
+                }
+                if (typeof p.mini_hud_scale === 'number') {
+                    applyHudScale(p.mini_hud_scale);
                 }
             });
         }

@@ -1548,6 +1548,39 @@ input[type="range"]::-moz-range-thumb {
     line-height: 1.4;
 }
 
+.ctrl-val-btn {
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    border-radius: 6px;
+    padding: 2px 7px;
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--dim);
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: all 0.15s ease;
+}
+
+.ctrl-val-btn:hover {
+    color: var(--text);
+    border-color: var(--orange);
+    background: var(--orange-soft);
+}
+
+.hud-size-quip {
+    min-height: 30px;
+    transition: color 0.2s ease;
+}
+
+.hud-size-quip.tone-small {
+    color: #ffaa00;
+}
+
+.hud-size-quip.tone-big {
+    color: #ff7a45;
+}
+
 .tiny-reset-btn {
     background: rgba(255, 255, 255, 0.06);
     border: 1px solid rgba(255, 255, 255, 0.08);

@@ -163,6 +163,8 @@ pub struct AppState {
     pub mini_hud_mode: String,
     #[serde(default)]
     pub mini_hud_locked: bool,
+    #[serde(default = "default_hud_scale")]
+    pub mini_hud_scale: u32,
     #[serde(default)]
     pub mini_hud_pos: Option<(i32, i32)>,
     #[serde(default)]
@@ -200,12 +202,32 @@ pub struct AppState {
     pub last_music_playing: bool,
 }
 
+const HUD_BASE_W: f64 = 360.0;
+const HUD_BASE_H: f64 = 62.0;
+
 fn default_true() -> bool { true }
 fn default_ducking_level() -> u32 { 20 }
 fn default_rewind_seconds() -> u32 { 5 }
 fn default_rewind_threshold() -> u32 { 30 }
 fn default_mic_action() -> SiteAction { SiteAction::Duck }
 fn default_hud_mode() -> String { "pinned".to_string() }
+fn default_hud_scale() -> u32 { 100 }
+
+fn clamp_hud_scale(scale: u32) -> u32 {
+    scale.clamp(60, 175)
+}
+
+fn hud_logical_dimensions(scale_pct: u32) -> (f64, f64) {
+    let factor = clamp_hud_scale(scale_pct) as f64 / 100.0;
+    ((HUD_BASE_W * factor).ceil(), (HUD_BASE_H * factor).ceil())
+}
+
+fn apply_mini_hud_scale<R: Runtime>(app: &AppHandle<R>, scale_pct: u32) {
+    if let Some(hud) = app.get_webview_window("mini_hud") {
+        let (width, height) = hud_logical_dimensions(scale_pct);
+        let _ = hud.set_size(tauri::Size::Logical(tauri::LogicalSize { width, height }));
+    }
+}
 
 fn is_sync_active(s: &AppState) -> bool {
     if !s.sync_enabled || s.snooze_indefinite {
@@ -354,6 +376,7 @@ impl Default for AppState {
             album_art_spin: true,
             mini_hud_mode: "pinned".to_string(),
             mini_hud_locked: false,
+            mini_hud_scale: 100,
             mini_hud_pos: None,
             site_actions: {
                 let mut map = HashMap::new();
@@ -700,6 +723,7 @@ async fn get_current_track_info(state: &Arc<Mutex<AppState>>) -> serde_json::Val
         album_art_spin,
         mini_hud_mode,
         mini_hud_locked,
+        mini_hud_scale,
         active_video_host,
         snooze_secs,
         snooze_indefinite,
@@ -719,6 +743,7 @@ async fn get_current_track_info(state: &Arc<Mutex<AppState>>) -> serde_json::Val
             s.album_art_spin,
             s.mini_hud_mode.clone(),
             s.mini_hud_locked,
+            clamp_hud_scale(s.mini_hud_scale),
             s.active_video_host.clone(),
             snooze_remaining_secs(&s),
             s.snooze_indefinite,
@@ -758,6 +783,7 @@ async fn get_current_track_info(state: &Arc<Mutex<AppState>>) -> serde_json::Val
         obj.insert("album_art_spin".to_string(), serde_json::Value::Bool(album_art_spin));
         obj.insert("mini_hud_mode".to_string(), serde_json::Value::String(mini_hud_mode));
         obj.insert("mini_hud_locked".to_string(), serde_json::Value::Bool(mini_hud_locked));
+        obj.insert("mini_hud_scale".to_string(), serde_json::Value::Number(mini_hud_scale.into()));
         obj.insert("active_video_host".to_string(), serde_json::json!(active_video_host));
         obj.insert("snooze_remaining_secs".to_string(), serde_json::json!(snooze_secs));
         obj.insert("snooze_indefinite".to_string(), serde_json::Value::Bool(snooze_indefinite));
@@ -1906,6 +1932,7 @@ fn update_settings(
     album_art_spin: Option<bool>,
     mini_hud_mode: Option<String>,
     mini_hud_locked: Option<bool>,
+    mini_hud_scale: Option<u32>,
 ) -> Result<(), String> {
     use tauri_plugin_autostart::ManagerExt;
     
@@ -1964,19 +1991,32 @@ fn update_settings(
     if let Some(mhl) = mini_hud_locked {
         s.mini_hud_locked = mhl;
     }
-    if album_art_spin.is_some() || mini_hud_mode.is_some() || mini_hud_locked.is_some() {
+    if let Some(mhsc) = mini_hud_scale {
+        s.mini_hud_scale = clamp_hud_scale(mhsc);
+    }
+    let scale_to_apply = clamp_hud_scale(s.mini_hud_scale);
+    if album_art_spin.is_some()
+        || mini_hud_mode.is_some()
+        || mini_hud_locked.is_some()
+        || mini_hud_scale.is_some()
+    {
         let _ = app.emit(
             "hud_prefs_changed",
             serde_json::json!({
                 "album_art_spin": s.album_art_spin,
                 "mini_hud_mode": s.mini_hud_mode,
                 "mini_hud_locked": s.mini_hud_locked,
+                "mini_hud_scale": scale_to_apply,
             }),
         );
     }
 
     s.save();
     broadcast_site_config(&s.site_actions);
+    drop(s);
+    if mini_hud_scale.is_some() {
+        apply_mini_hud_scale(&app, scale_to_apply);
+    }
     Ok(())
 }
 
@@ -2172,14 +2212,18 @@ fn reset_weekly_recap(state: tauri::State<'_, StateWrapper>) -> Result<(), Strin
 
 #[tauri::command]
 fn toggle_mini_hud<R: Runtime>(app: AppHandle<R>, state: tauri::State<'_, StateWrapper>, show: bool) -> Result<(), String> {
-    let mut s = state.0.lock().unwrap();
-    s.mini_hud_enabled = show;
-    s.save();
+    let hud_scale = {
+        let mut s = state.0.lock().unwrap();
+        s.mini_hud_enabled = show;
+        s.save();
+        clamp_hud_scale(s.mini_hud_scale)
+    };
     
     let _ = app.emit("mini_hud_toggled", show);
 
     if let Some(hud) = app.get_webview_window("mini_hud") {
         if show {
+            apply_mini_hud_scale(&app, hud_scale);
             #[cfg(target_os = "windows")]
             {
                 use windows::Win32::UI::WindowsAndMessaging::{GetWindowLongW, SetWindowLongW, GWL_EXSTYLE, WS_EX_NOACTIVATE};
@@ -2324,27 +2368,39 @@ fn set_hud_prefs<R: Runtime>(
     mode: Option<String>,
     locked: Option<bool>,
     spin: Option<bool>,
+    scale: Option<u32>,
 ) -> Result<(), String> {
-    let mut s = state.0.lock().unwrap();
-    if let Some(m) = mode {
-        s.mini_hud_mode = normalize_hud_mode(&m);
+    let scale_to_apply = {
+        let mut s = state.0.lock().unwrap();
+        if let Some(m) = mode {
+            s.mini_hud_mode = normalize_hud_mode(&m);
+        }
+        if let Some(l) = locked {
+            s.mini_hud_locked = l;
+        }
+        if let Some(sp) = spin {
+            s.album_art_spin = sp;
+            let _ = app.emit("hud_spin_changed", sp);
+        }
+        if let Some(sc) = scale {
+            s.mini_hud_scale = clamp_hud_scale(sc);
+        }
+        let clamped_scale = clamp_hud_scale(s.mini_hud_scale);
+        s.save();
+        let _ = app.emit(
+            "hud_prefs_changed",
+            serde_json::json!({
+                "album_art_spin": s.album_art_spin,
+                "mini_hud_mode": s.mini_hud_mode,
+                "mini_hud_locked": s.mini_hud_locked,
+                "mini_hud_scale": clamped_scale,
+            }),
+        );
+        clamped_scale
+    };
+    if scale.is_some() {
+        apply_mini_hud_scale(&app, scale_to_apply);
     }
-    if let Some(l) = locked {
-        s.mini_hud_locked = l;
-    }
-    if let Some(sp) = spin {
-        s.album_art_spin = sp;
-        let _ = app.emit("hud_spin_changed", sp);
-    }
-    s.save();
-    let _ = app.emit(
-        "hud_prefs_changed",
-        serde_json::json!({
-            "album_art_spin": s.album_art_spin,
-            "mini_hud_mode": s.mini_hud_mode,
-            "mini_hud_locked": s.mini_hud_locked,
-        }),
-    );
     Ok(())
 }
 
@@ -2449,9 +2505,9 @@ pub fn run() {
             }
 
             // Restore Mini-HUD if enabled
-            let (hud_enabled, hud_pos) = {
+            let (hud_enabled, hud_pos, hud_scale) = {
                 let s = state.lock().unwrap();
-                (s.mini_hud_enabled, s.mini_hud_pos)
+                (s.mini_hud_enabled, s.mini_hud_pos, clamp_hud_scale(s.mini_hud_scale))
             };
             if let Some(hud) = app.get_webview_window("mini_hud") {
                 #[cfg(target_os = "windows")]
@@ -2465,6 +2521,7 @@ pub fn run() {
                         }
                     }
                 }
+                apply_mini_hud_scale(app.handle(), hud_scale);
                 if let Some((x, y)) = hud_pos {
                     let _ = hud.set_position(tauri::Position::Physical(tauri::PhysicalPosition { x, y }));
                 }
@@ -2537,16 +2594,18 @@ pub fn run() {
                         if let Some(hud) = app.get_webview_window("mini_hud") {
                             let is_visible = hud.is_visible().unwrap_or(false);
                             let next_visible = !is_visible;
-                            if is_visible {
-                                let _ = hud.hide();
-                            } else {
-                                let _ = hud.show();
-                            }
                             let state = app.state::<StateWrapper>().0.clone();
-                            {
+                            let hud_scale = {
                                 let mut s = state.lock().unwrap();
                                 s.mini_hud_enabled = next_visible;
                                 s.save();
+                                clamp_hud_scale(s.mini_hud_scale)
+                            };
+                            if is_visible {
+                                let _ = hud.hide();
+                            } else {
+                                apply_mini_hud_scale(app, hud_scale);
+                                let _ = hud.show();
                             }
                             let _ = app.emit("mini_hud_toggled", next_visible);
                         }
@@ -2921,5 +2980,15 @@ mod tests {
         assert!(!is_focus_video_host(Some("netflix.com")));
         assert!(!is_focus_video_host(Some("x.com")));
         assert!(!is_focus_video_host(Some("www.instagram.com")));
+    }
+
+    #[test]
+    fn hud_scale_clamping_and_dimensions_scale_proportionally() {
+        assert_eq!(clamp_hud_scale(20), 60);
+        assert_eq!(clamp_hud_scale(100), 100);
+        assert_eq!(clamp_hud_scale(250), 175);
+        assert_eq!(hud_logical_dimensions(100), (360.0, 62.0));
+        assert_eq!(hud_logical_dimensions(60), (216.0, 38.0));
+        assert_eq!(hud_logical_dimensions(175), (630.0, 109.0));
     }
 }

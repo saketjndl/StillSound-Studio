@@ -456,7 +456,22 @@
                             </div>
                             <p class="mode-explain" id="hud-mode-explain">Pinned: stays visible cleanly on screen and dims gently when idle.</p>
 
-                            <div class="ctrl-row" style="margin-top: 14px;">
+                            <div class="ctrl-row" style="margin-top: 14px; margin-bottom: 6px;">
+                                <div class="ctrl-info">
+                                    <span class="ctrl-label label-with-tip">Mini-HUD Size <span class="info-tip" tabindex="0" data-tip="Scales both the floating capsule and its window frame proportionally (60%–175%). Click the percentage pill to reset to 100%.">i</span></span>
+                                    <span class="ctrl-desc">Resize the capsule for compact desks or 4K screens.</span>
+                                </div>
+                                <button class="ctrl-val-btn" id="hud-size-num" title="Click to reset to 100%" type="button">100%</button>
+                            </div>
+                            <input type="range" id="hud-size-slider" min="60" max="175" value="100" step="5">
+                            <div class="range-ticks">
+                                <span>Micro (60%)</span>
+                                <span>Default (100%)</span>
+                                <span>Unit (175%)</span>
+                            </div>
+                            <p class="mode-explain hud-size-quip" id="hud-size-quip">Classic proportions — balanced, crisp desktop fit.</p>
+
+                            <div class="ctrl-row" style="margin-top: 12px;">
                                 <div class="ctrl-info">
                                     <span class="ctrl-label label-with-tip">Spinning Album Art <span class="info-tip" tabindex="0" data-tip="Disabling switches the Mini-HUD thumbnail to a still rounded square so peripheral motion won't distract during lectures.">i</span></span>
                                     <span class="ctrl-desc">Turn off for calm, static art during lectures.</span>

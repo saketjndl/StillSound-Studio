@@ -5,6 +5,7 @@ All notable changes to **StillSound Studio** are documented here. See [README.md
 ## [3.0.1] - 2026-11-27
 
 ### Added
+- **Resizable Floating Mini-HUD (`mini_hud_scale`)**: Added a **Mini-HUD Size** slider (`60%–175%`) with click-to-reset pill, proportional OS window resizing + CSS zoom scaling, live drag preview, and playful quips when set extra small or extra large.
 - **Spinning Mini-HUD Album Art Toggle (`album_art_spin`)**: Added Settings switch (`#spin-art-toggle`) so users can disable vinyl album rotation during lectures or focus sessions, switching Mini-HUD art to a calm rounded square.
 - **Timed Snooze & Dynamic Tray Status Badges**: Added `15m`, `1h`, and `Until Restart` Snooze Sync controls in both the Console UI and Tray menu (auto-expiring and restoring ducked/paused playback cleanly), plus state-tinted status dots on the tray icon.
 - **Peek-on-Action Mini-HUD & Lock Persistence**: Added **Pinned / Peek / Auto-Hide** visibility modes (gliding down briefly on pause, duck, or track changes when set to `Peek`), persisted HUD drag-lock state, and made HUD dragging unlocked by default.
