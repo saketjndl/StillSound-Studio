@@ -1,11 +1,12 @@
-const api = (typeof browser !== 'undefined') ? browser : chrome;
+const isFirefox = typeof browser !== 'undefined';
+const api = isFirefox ? browser : chrome;
+const SOCIAL_DOMAINS = ['twitter.com', 'x.com', 'reddit.com', 'instagram.com', 'facebook.com', 'tiktok.com'];
 
 // DOM refs
 const island = document.getElementById('island');
 const ambientBg = document.getElementById('ambient-bg');
 const musicSection = document.getElementById('music-section');
 const albumArt = document.getElementById('album-art');
-const artPlaceholder = document.getElementById('art-placeholder');
 const trackName = document.getElementById('track-name');
 const trackArtist = document.getElementById('track-artist');
 const waveform = document.getElementById('waveform');
@@ -23,6 +24,64 @@ let lastTrackName = '';
 let isSpotifyPlaying = false;
 let isOptimisticUpdate = false;
 let optimisticTimeout = null;
+let pollCount = 0;
+
+function matchesDomain(hostname, domain) {
+    return hostname === domain || hostname.endsWith('.' + domain);
+}
+
+function resolveSiteAction(hostname, siteActions = {}) {
+    hostname = hostname.toLowerCase().replace(/^www\./, '');
+    if (Object.prototype.hasOwnProperty.call(siteActions, hostname)) {
+        return siteActions[hostname];
+    }
+    const parts = hostname.split('.');
+    for (let i = 1; i < parts.length - 1; i++) {
+        const parent = parts.slice(i).join('.');
+        if (Object.prototype.hasOwnProperty.call(siteActions, parent)) {
+            return siteActions[parent];
+        }
+    }
+    if (SOCIAL_DOMAINS.some((d) => matchesDomain(hostname, d))) {
+        return 'duck';
+    }
+    return 'pause';
+}
+
+function sendRuntimeMessage(payload, onReply) {
+    try {
+        if (isFirefox) {
+            const p = browser.runtime.sendMessage(payload);
+            if (p && typeof p.then === 'function') {
+                p.then((res) => {
+                    if (onReply && res !== undefined) onReply(res);
+                }).catch(() => {});
+            }
+        } else {
+            chrome.runtime.sendMessage(payload, (res) => {
+                if (chrome.runtime?.lastError) return;
+                if (onReply && res !== undefined) onReply(res);
+            });
+        }
+    } catch (e) {
+        console.warn('[StillSound Popup] Error sending message:', e);
+    }
+}
+
+function queryActiveTab(callback) {
+    try {
+        if (isFirefox) {
+            browser.tabs.query({ active: true, currentWindow: true })
+                .then((tabs) => callback(tabs || []))
+                .catch(() => {});
+        } else {
+            chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+                if (chrome.runtime?.lastError) return;
+                callback(tabs || []);
+            });
+        }
+    } catch (e) {}
+}
 
 function updatePlayPauseIcon(playing) {
     if (playing) {
@@ -40,33 +99,18 @@ function updatePlayPauseIcon(playing) {
 
 function sendCommand(type) {
     console.log('[StillSound Popup] Sending command:', type);
-    try {
-        const callback = (res) => {
-            const lastError = chrome.runtime.lastError;
-            if (lastError) {
-                console.error('[StillSound Popup] Command error:', lastError.message);
-                return;
-            }
-        };
-        const result = api.runtime.sendMessage({ type }, callback);
-        if (result && typeof result.then === 'function') {
-            result.catch(() => {});
-        }
-    } catch (e) {
-        console.warn('[StillSound Popup] Error sending command:', e);
-    }
+    sendRuntimeMessage({ type });
 }
 
 // --- Control buttons ---
 btnPlayPause.addEventListener('click', () => {
     sendCommand(isSpotifyPlaying ? 'spotify_pause' : 'spotify_play');
-    // Optimistic UI update with smooth transition
     isSpotifyPlaying = !isSpotifyPlaying;
-    
+
     isOptimisticUpdate = true;
     clearTimeout(optimisticTimeout);
     optimisticTimeout = setTimeout(() => { isOptimisticUpdate = false; }, 3000);
-    
+
     updatePlayPauseIcon(isSpotifyPlaying);
     if (isSpotifyPlaying) {
         waveform.classList.add('active');
@@ -110,7 +154,7 @@ function updateUI(res) {
         if (controls) controls.style.display = 'none';
     }
 
-    // --- YouTube / Video status ---
+    // --- Video status ---
     if (res.ytPlaying) {
         ytPill.textContent = 'pausing music';
         ytPill.className = 'status-pill active';
@@ -130,42 +174,48 @@ function updateUI(res) {
     }
 
     // --- Active Tab Site Action Display ---
-    if (typeof chrome !== 'undefined' && chrome.tabs && chrome.tabs.query) {
-        chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-            if (tabs && tabs[0] && tabs[0].url) {
-                try {
-                    const url = new URL(tabs[0].url);
-                    const hostname = url.hostname.replace(/^www\./, '');
-                    const siteRow = document.getElementById('site-action-row');
-                    const siteLabel = document.getElementById('current-site-label');
-                    const sitePill = document.getElementById('site-action-pill');
-                    if (siteRow && hostname && !hostname.startsWith('chrome') && !hostname.startsWith('brave')) {
-                        siteRow.style.display = 'flex';
-                        siteLabel.textContent = hostname;
-                        const action = (['twitter.com', 'x.com', 'reddit.com', 'instagram.com', 'facebook.com', 'tiktok.com'].some(d => hostname.includes(d))) ? 'duck' : 'pause';
-                        sitePill.textContent = action.toUpperCase();
-                        sitePill.className = action === 'duck' ? 'status-pill active' : 'status-pill ok';
-                        if (action === 'duck') sitePill.style.background = '#ffaa00';
-                        else sitePill.style.background = '';
-                    }
-                } catch (e) {}
-            }
-        });
-    }
+    queryActiveTab((tabs) => {
+        if (tabs[0] && tabs[0].url) {
+            try {
+                const url = new URL(tabs[0].url);
+                if (url.protocol !== 'http:' && url.protocol !== 'https:') return;
 
-    // --- Spotify track info ---
+                const hostname = url.hostname.replace(/^www\./, '');
+                const siteRow = document.getElementById('site-action-row');
+                const siteLabel = document.getElementById('current-site-label');
+                const sitePill = document.getElementById('site-action-pill');
+                if (siteRow && hostname) {
+                    siteRow.style.display = 'flex';
+                    siteLabel.textContent = hostname;
+                    const action = resolveSiteAction(hostname, res.siteActions || {});
+                    sitePill.textContent = action.toUpperCase();
+                    if (action === 'duck') {
+                        sitePill.className = 'status-pill active';
+                        sitePill.style.background = '#ffaa00';
+                    } else if (action === 'ignore') {
+                        sitePill.className = 'status-pill off';
+                        sitePill.style.background = '';
+                    } else {
+                        sitePill.className = 'status-pill ok';
+                        sitePill.style.background = '';
+                    }
+                }
+            } catch (e) {}
+        }
+    });
+
+    // --- Track info ---
     if (res.spotify) {
         const s = res.spotify;
 
         if (s.track_name && s.track_name.length > 0) {
             trackName.textContent = s.track_name;
 
-            // Build artist line & device info
             let sub = s.artist_name || '';
             if (s.album_name && s.album_name !== s.track_name) {
                 sub += sub ? ' · ' + s.album_name : s.album_name;
             }
-            
+
             if (res.isDucked || s.is_ducked) {
                 trackArtist.textContent = sub ? `${sub} • Ducked (${s.ducking_level || 20}%) for Feed Video` : 'Ducked for Feed Video';
             } else if (res.ytPlaying) {
@@ -182,24 +232,22 @@ function updateUI(res) {
                 trackArtist.textContent = sub || 'Unknown';
             }
 
-            // Album art — ensure loaded class is added immediately for data URIs and cached images
             if (s.album_art && s.album_art.length > 0) {
-                if (albumArt.src !== s.album_art) {
+                if (albumArt.getAttribute('src') !== s.album_art) {
                     albumArt.src = s.album_art;
                     ambientBg.src = s.album_art;
                 }
                 albumArt.classList.add('loaded');
             } else {
                 albumArt.classList.remove('loaded');
-                albumArt.src = '';
-                ambientBg.src = '';
+                albumArt.removeAttribute('src');
+                ambientBg.removeAttribute('src');
             }
 
-            // Play state — update icon smoothly
             if (!isOptimisticUpdate && s.is_playing !== isSpotifyPlaying) {
                 isSpotifyPlaying = s.is_playing;
                 updatePlayPauseIcon(isSpotifyPlaying);
-                
+
                 if (s.is_playing) {
                     waveform.classList.add('active');
                     musicSection.classList.add('playing');
@@ -211,7 +259,6 @@ function updateUI(res) {
                 }
             }
 
-            // Trigger animation on track change
             if (s.track_name !== lastTrackName && lastTrackName !== '') {
                 trackName.style.animation = 'artFadeIn 0.3s ease both';
                 trackArtist.style.animation = 'artFadeIn 0.3s ease both 0.05s';
@@ -222,12 +269,11 @@ function updateUI(res) {
             }
             lastTrackName = s.track_name;
         } else {
-            // No track info
             trackName.textContent = 'No Active Music Session';
             trackArtist.textContent = 'Play music on Spotify, Apple Music, or VLC';
             albumArt.classList.remove('loaded');
-            albumArt.src = '';
-            ambientBg.src = '';
+            albumArt.removeAttribute('src');
+            ambientBg.removeAttribute('src');
             waveform.classList.remove('active');
             musicSection.classList.remove('playing');
             ambientBg.classList.remove('playing');
@@ -238,30 +284,12 @@ function updateUI(res) {
 }
 
 function getStatus() {
-    try {
-        const message = { type: 'get_status' };
-
-        const callback = (res) => {
-            const lastError = chrome.runtime.lastError;
-            if (lastError) return;
-            if (res) updateUI(res);
-        };
-
-        const result = api.runtime.sendMessage(message, callback);
-
-        // If it returns a promise (Firefox browser namespace), handle it
-        if (result && typeof result.then === 'function') {
-            result.then(updateUI).catch(() => {});
-        }
-    } catch (e) {
-        console.warn('[StillSound] Error getting status:', e);
+    pollCount += 1;
+    if (pollCount % 2 === 1) {
+        sendRuntimeMessage({ type: 'request_spotify_refresh' });
     }
+    sendRuntimeMessage({ type: 'get_status' }, updateUI);
 }
-
-// Request a fresh spotify state on popup open
-try {
-    api.runtime.sendMessage({ type: 'request_spotify_refresh' });
-} catch (e) { /* ignore */ }
 
 getStatus();
 setInterval(getStatus, 1000);
